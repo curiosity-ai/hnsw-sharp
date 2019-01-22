@@ -1,43 +1,54 @@
 ﻿// <copyright file="SmallWorld.Graph.cs" company="Microsoft">
-// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 // </copyright>
 
 namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Linq;
+    using System.Runtime.Serialization.Formatters.Binary;
+    using System.Text;
 
     /// <content>
     /// The part with the implemnation of a hierarchical small world graph.
     /// </content>
     public partial class SmallWorld<TItem, TDistance>
     {
-        private class Graph
+        /// <summary>
+        /// The layered graph implementation.
+        /// </summary>
+        internal class Graph
         {
-            private readonly Parameters parameters;
-
             private Node entryPoint;
 
             /// <summary>
             /// Initializes a new instance of the <see cref="Graph"/> class.
             /// </summary>
-            /// <param name="parameters">The arameters of the algorithm.</param>
-            public Graph(Parameters parameters)
+            /// <param name="distance">The distance funtion to use in the small world.</param>
+            /// <param name="parameters">The parameters of the algorithm.</param>
+            public Graph(Func<TItem, TItem, TDistance> distance, Parameters parameters)
             {
-                this.parameters = parameters;
-                switch (this.parameters.NeighbourHeuristic)
+                this.Parameters = parameters;
+                switch (this.Parameters.NeighbourHeuristic)
                 {
                     case NeighbourSelectionHeuristic.SelectHeuristic:
-                        this.NewNode = (id, item, level) => new NodeAlg4(id, item, level, this.parameters);
+                        this.NewNode = (id, item, level) => new NodeAlg4(id, item, level, distance, this.Parameters);
                         break;
 
                     case NeighbourSelectionHeuristic.SelectSimple:
                     default:
-                        this.NewNode = (id, item, level) => new NodeAlg3(id, item, level, this.parameters);
+                        this.NewNode = (id, item, level) => new NodeAlg3(id, item, level, distance, this.Parameters);
                         break;
                 }
             }
+
+            /// <summary>
+            /// Gets parameters of the algorithm.
+            /// </summary>
+            public Parameters Parameters { get; private set; }
 
             /// <summary>
             /// Gets the node factory associated with the graph.
@@ -54,18 +65,18 @@ namespace HNSW.Net
             /// Article: Section 4. Algorithm 1.
             /// </summary>
             /// <param name="items">The items to insert.</param>
-            public void Create(IEnumerable<TItem> items)
+            /// <param name="generator">The random number generator to use in <see cref="RandomLevel"/></param>
+            public void Create(IList<TItem> items, Random generator)
             {
-                if (!items.Any())
+                if (!items?.Any() ?? false)
                 {
                     return;
                 }
 
                 int id = 0;
-                var firstItem = items.First();
-                this.entryPoint = this.NewNode(id++, firstItem, this.RandomLevel());
+                var entryPoint = this.NewNode(id, items[id], RandomLevel(generator, this.Parameters.LevelLambda));
 
-                foreach (var item in items.Skip(1))
+                for (id = 1; id < items.Count; ++id)
                 {
                     /*
                      * W ← ∅ // list for the currently found nearest elements
@@ -89,20 +100,19 @@ namespace HNSW.Net
                      */
 
                     // zoom in and find the best peer on the same level as newNode
-                    var bestPeer = this.entryPoint;
-                    var newNode = this.NewNode(id++, item, this.RandomLevel());
+                    var bestPeer = entryPoint;
+                    var newNode = this.NewNode(id, items[id], RandomLevel(generator, this.Parameters.LevelLambda));
                     for (int level = bestPeer.MaxLevel; level > newNode.MaxLevel; --level)
                     {
-                        bestPeer = this.KNearestAtLevel(bestPeer, newNode, 1, level).Single();
+                        bestPeer = KNearestAtLevel(bestPeer, newNode, 1, level).Single();
                     }
 
                     // connecting new node to the small world
-                    for (int level = Math.Min(newNode.MaxLevel, this.entryPoint.MaxLevel); level >= 0; --level)
+                    for (int level = Math.Min(newNode.MaxLevel, entryPoint.MaxLevel); level >= 0; --level)
                     {
-                        // potential  neighbours is a max heap by remoteness
-                        var potentialNeighbours = this.KNearestAtLevel(bestPeer, newNode, this.parameters.ConstructionPruning, level);
-
+                        var potentialNeighbours = KNearestAtLevel(bestPeer, newNode, this.Parameters.ConstructionPruning, level);
                         var bestNeighbours = newNode.SelectBestForConnecting(potentialNeighbours);
+
                         foreach (var newNeighbour in bestNeighbours)
                         {
                             newNode.AddConnection(newNeighbour, level);
@@ -117,11 +127,14 @@ namespace HNSW.Net
                     }
 
                     // zoom out to the highest level
-                    if (newNode.MaxLevel > this.entryPoint.MaxLevel)
+                    if (newNode.MaxLevel > entryPoint.MaxLevel)
                     {
-                        this.entryPoint = newNode;
+                        entryPoint = newNode;
                     }
                 }
+
+                // construction is done
+                this.entryPoint = entryPoint;
             }
 
             /// <summary>
@@ -137,10 +150,94 @@ namespace HNSW.Net
                 var bestPeer = this.entryPoint;
                 for (int level = this.entryPoint.MaxLevel; level > 0; --level)
                 {
-                    bestPeer = this.KNearestAtLevel(bestPeer, destination, 1, level).Single();
+                    bestPeer = KNearestAtLevel(bestPeer, destination, 1, level).Single();
                 }
 
-                return this.KNearestAtLevel(bestPeer, destination, k, 0);
+                return KNearestAtLevel(bestPeer, destination, k, 0);
+            }
+
+            /// <summary>
+            /// Serializes edges of the graph.
+            /// </summary>
+            /// <returns>Bytes representing edges.</returns>
+            public byte[] Serialize()
+            {
+                using (var stream = new MemoryStream())
+                {
+                    var formatter = new BinaryFormatter();
+                    formatter.Serialize(stream, this.entryPoint.Id);
+                    formatter.Serialize(stream, this.entryPoint.MaxLevel);
+
+                    for (int level = this.entryPoint.MaxLevel; level >= 0; --level)
+                    {
+                        var edges = new Dictionary<int, List<int>>();
+                        BFS(this.entryPoint, level, (node) =>
+                        {
+                            edges[node.Id] = node.GetConnections(level).Select(x => x.Id).ToList();
+                        });
+
+                        formatter.Serialize(stream, edges);
+                    }
+
+                    return stream.ToArray();
+                }
+            }
+
+            /// <summary>
+            /// Deserilaizes graph edges and assigns nodes to the items.
+            /// </summary>
+            /// <param name="items">The underlying items.</param>
+            /// <param name="bytes">The serialized edges.</param>
+            public void Deserialize(IList<TItem> items, byte[] bytes)
+            {
+                var nodeList = Enumerable.Repeat<Node>(null, items.Count).ToList();
+                Func<int, int, Node> getOrAdd = (id, level) => nodeList[id] = nodeList[id] ?? this.NewNode(id, items[id], level);
+
+                using (var stream = new MemoryStream(bytes))
+                {
+                    var formatter = new BinaryFormatter();
+                    int entryId = (int)formatter.Deserialize(stream);
+                    int maxLevel = (int)formatter.Deserialize(stream);
+
+                    nodeList[entryId] = this.NewNode(entryId, items[entryId], maxLevel);
+                    for (int level = maxLevel; level >= 0; --level)
+                    {
+                        var edges = (Dictionary<int, List<int>>)formatter.Deserialize(stream);
+                        foreach (var pair in edges)
+                        {
+                            var currentNode = getOrAdd(pair.Key, level);
+                            foreach (var adjacentId in pair.Value)
+                            {
+                                var neighbour = getOrAdd(adjacentId, level);
+                                currentNode.AddConnection(neighbour, level);
+                            }
+                        }
+                    }
+
+                    this.entryPoint = nodeList[entryId];
+                }
+            }
+
+            /// <summary>
+            /// Prints edges of the graph.
+            /// </summary>
+            /// <returns>String representation of the graph's edges.</returns>
+            internal string Print()
+            {
+                var buffer = new StringBuilder();
+                for (int level = this.entryPoint.MaxLevel; level >= 0; --level)
+                {
+                    buffer.AppendLine($"[LEVEL {level}]");
+                    BFS(this.entryPoint, level, (node) =>
+                    {
+                        var neighbours = string.Join(", ", node.GetConnections(level).Select(x => x.Id));
+                        buffer.AppendLine($"({node.Id}) -> {{{neighbours}}}");
+                    });
+
+                    buffer.AppendLine();
+                }
+
+                return buffer.ToString();
             }
 
             /// <summary>
@@ -152,7 +249,7 @@ namespace HNSW.Net
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
             /// <param name="level">Level of the layer.</param>
             /// <returns>The list of the nearest neighbours at the level.</returns>
-            private IList<Node> KNearestAtLevel(Node entryPoint, Node destination, int k, int level)
+            private static IList<Node> KNearestAtLevel(Node entryPoint, Node destination, int k, int level)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -179,9 +276,9 @@ namespace HNSW.Net
                 IComparer<Node> closerIsLess = destination.TravelingCosts;
                 IComparer<Node> fartherIsLess = closerIsLess.Reverse();
 
-                // prepare buffers
+                // prepare heaps
                 var resultHeap = new BinaryHeap<Node>(new List<Node>(k + 1) { entryPoint }, closerIsLess);
-                var expansionHeap = new BinaryHeap<Node>(new List<Node>(this.parameters.M) { entryPoint }, fartherIsLess);
+                var expansionHeap = new BinaryHeap<Node>(new List<Node>() { entryPoint }, fartherIsLess);
 
                 // run bfs
                 var visited = new HashSet<int>() { entryPoint.Id };
@@ -226,10 +323,12 @@ namespace HNSW.Net
             /// <summary>
             /// Gets the level for the layer.
             /// </summary>
+            /// <param name="generator">The random numbers generator.</param>
+            /// <param name="lambda">Poisson lambda.</param>
             /// <returns>The level value.</returns>
-            private int RandomLevel()
+            private static int RandomLevel(Random generator, double lambda)
             {
-                var r = -Math.Log(this.parameters.Generator.NextDouble()) * this.parameters.LevelLambda;
+                var r = -Math.Log(generator.NextDouble()) * lambda;
                 return (int)r;
             }
         }

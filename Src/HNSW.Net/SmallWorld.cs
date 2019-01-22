@@ -1,5 +1,6 @@
 ﻿// <copyright file="SmallWorld.cs" company="Microsoft">
-// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 // </copyright>
 
 namespace HNSW.Net
@@ -7,7 +8,9 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
+    using System.IO;
     using System.Linq;
+    using System.Runtime.Serialization.Formatters.Binary;
 
     /// <summary>
     /// The Hierarchical Navigable Small World Graphs.
@@ -19,9 +22,9 @@ namespace HNSW.Net
         where TDistance : IComparable<TDistance>
     {
         /// <summary>
-        /// The parameters for the hnsw algorithm.
+        /// The distance function in the items space.
         /// </summary>
-        private readonly Parameters parameters;
+        private readonly Func<TItem, TItem, TDistance> distance;
 
         /// <summary>
         /// The hierarchical small world graph instance.
@@ -31,10 +34,10 @@ namespace HNSW.Net
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
         /// </summary>
-        /// <param name="parameters">Parameters of the algorithm.</param>
-        public SmallWorld(Parameters parameters)
+        /// <param name="distance">The distance funtion to use in the small world.</param>
+        public SmallWorld(Func<TItem, TItem, TDistance> distance)
         {
-            this.parameters = parameters;
+            this.distance = distance;
         }
 
         /// <summary>
@@ -59,10 +62,12 @@ namespace HNSW.Net
         /// Builds hnsw graph from the items.
         /// </summary>
         /// <param name="items">The items to connect into the graph.</param>
-        public void BuildGraph(IEnumerable<TItem> items)
+        /// <param name="generator">The random number generator for building graph.</param>
+        /// <param name="parameters">Parameters of the algorithm.</param>
+        public void BuildGraph(IList<TItem> items, Random generator, Parameters parameters)
         {
-            var graph = new Graph(this.parameters);
-            graph.Create(items);
+            var graph = new Graph(this.distance, parameters);
+            graph.Create(items, generator);
             this.graph = graph;
         }
 
@@ -86,52 +91,76 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Serializes the internal graph.
+        /// Serializes the graph WITHOUT linked items.
         /// </summary>
         /// <returns>Bytes representing the graph.</returns>
         public byte[] SerializeGraph()
         {
-            // TODO: implement serialization.
-            throw new NotImplementedException("TODO");
+            if (this.graph == null)
+            {
+                throw new InvalidOperationException("The graph does not exist");
+            }
+
+            var formatter = new BinaryFormatter();
+            using (var stream = new MemoryStream())
+            {
+                formatter.Serialize(stream, this.graph.Parameters);
+
+                var edgeBytes = this.graph.Serialize();
+                stream.Write(edgeBytes, 0, edgeBytes.Length);
+
+                return stream.ToArray();
+            }
         }
 
         /// <summary>
         /// Deserializes the graph from byte array.
         /// </summary>
         /// <param name="items">The items to assign to the graph's verticies.</param>
-        /// <param name="graph">The serialized grpah.</param>
-        public void DeserializeGraph(IEnumerable<TItem> items, byte[] graph)
+        /// <param name="bytes">The serialized parameters and edges.</param>
+        public void DeserializeGraph(IList<TItem> items, byte[] bytes)
         {
-            // TODO: implement deserialization.
-            throw new NotImplementedException("TODO");
+            var formatter = new BinaryFormatter();
+            using (var stream = new MemoryStream(bytes))
+            {
+                var parameters = (Parameters)formatter.Deserialize(stream);
+
+                var graph = new Graph(this.distance, parameters);
+                graph.Deserialize(items, bytes.Skip((int)stream.Position).ToArray());
+
+                this.graph = graph;
+            }
+        }
+
+        /// <summary>
+        /// Prints edges of the graph.
+        /// Mostly for debug and test purposes.
+        /// </summary>
+        /// <returns>String representation of the graph's edges.</returns>
+        internal string Print()
+        {
+            return this.graph.Print();
         }
 
         /// <summary>
         /// Parameters of the algorithm.
         /// </summary>
         [SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "By Design")]
+        [Serializable]
         public class Parameters
         {
             /// <summary>
             /// Initializes a new instance of the <see cref="Parameters"/> class.
             /// </summary>
-            /// <param name="distance">The distance computation function.</param>
-            public Parameters(Func<TItem, TItem, TDistance> distance)
+            public Parameters()
             {
-                this.Distance = distance;
                 this.M = 10;
                 this.LevelLambda = 1 / Math.Log(this.M);
-                this.Generator = new Random(42);
                 this.NeighbourHeuristic = NeighbourSelectionHeuristic.SelectSimple;
                 this.ConstructionPruning = 200;
                 this.ExpandBestSelection = false;
                 this.KeepPrunedConnections = true;
             }
-
-            /// <summary>
-            /// Gets function representing distance in the items space.
-            /// </summary>
-            public Func<TItem, TItem, TDistance> Distance { get; private set; }
 
             /// <summary>
             /// Gets or sets the parameter which defines the maximum number of neighbors in the zero and above-zero layers.
@@ -146,11 +175,6 @@ namespace HNSW.Net
             /// See 'mL' parameter in the HNSW article.
             /// </summary>
             public double LevelLambda { get; set; }
-
-            /// <summary>
-            /// Gets or sets the seed for random numbers generator.
-            /// </summary>
-            public Random Generator { get; set; }
 
             /// <summary>
             /// Gets or sets parameter which specifies the type of heuristic to use for best neighbours selection.

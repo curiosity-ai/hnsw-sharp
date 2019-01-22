@@ -1,5 +1,6 @@
 ﻿// <copyright file="SmallWorldTests.cs" company="Microsoft">
-// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 // </copyright>
 
 namespace HNSW.Net.Tests
@@ -39,12 +40,12 @@ namespace HNSW.Net.Tests
         [TestMethod]
         public void KNNSearchTest()
         {
-            var parameters = new SmallWorld<float[], float>.Parameters(CosineDistance.NonOptimized);
+            var parameters = new SmallWorld<float[], float>.Parameters();
             parameters.M = 15;
             parameters.LevelLambda = 1 / Math.Log(parameters.M);
 
-            var graph = new SmallWorld<float[], float>(parameters);
-            graph.BuildGraph(this.vectors);
+            var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
+            graph.BuildGraph(this.vectors, new Random(42), parameters);
 
             for (int i = 0; i < this.vectors.Count; ++i)
             {
@@ -53,6 +54,36 @@ namespace HNSW.Net.Tests
                 Assert.AreEqual(i, best.Id);
                 Assert.AreEqual(0, best.Distance, FloatError);
             }
+        }
+
+        /// <summary>
+        /// Serialization deserialization tests.
+        /// </summary>
+        [TestMethod]
+        public void SerializeDeserializeTest()
+        {
+            byte[] buffer;
+            string original;
+
+            // restrict scope of original graph
+            {
+                var parameters = new SmallWorld<float[], float>.Parameters()
+                {
+                    M = 15,
+                    LevelLambda = 1 / Math.Log(15),
+                };
+
+                var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
+                graph.BuildGraph(this.vectors, new Random(42), parameters);
+
+                buffer = graph.SerializeGraph();
+                original = graph.Print();
+            }
+
+            var copy = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
+            copy.DeserializeGraph(this.vectors, buffer);
+
+            Assert.AreEqual(original, copy.Print());
         }
     }
 }

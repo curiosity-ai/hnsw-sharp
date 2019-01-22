@@ -1,5 +1,6 @@
 ﻿// <copyright file="SmallWorld.Node.cs" company="Microsoft">
-// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 // </copyright>
 
 namespace HNSW.Net
@@ -17,7 +18,7 @@ namespace HNSW.Net
         /// The abstract node implementation.
         /// The <see cref="SelectBestForConnecting(IList{Node})"/> must be implemented by the subclass.
         /// </summary>
-        private abstract class Node
+        internal abstract class Node
         {
             /// <summary>
             /// Initializes a new instance of the <see cref="Node"/> class.
@@ -25,8 +26,9 @@ namespace HNSW.Net
             /// <param name="id">The identifier of the node.</param>
             /// <param name="item">The item which is represented by the node.</param>
             /// <param name="maxLevel">The maximum level until which the node exists.</param>
+            /// <param name="distance">The distance function for attached items.</param>
             /// <param name="parameters">The parameters of the algorithm.</param>
-            public Node(int id, TItem item, int maxLevel, Parameters parameters)
+            public Node(int id, TItem item, int maxLevel, Func<TItem, TItem, TDistance> distance, Parameters parameters)
             {
                 this.Id = id;
                 this.Item = item;
@@ -34,13 +36,12 @@ namespace HNSW.Net
                 this.Parameters = parameters;
 
                 this.Connections = new List<IList<Node>>(this.MaxLevel + 1);
-                this.Connections.Add(new List<Node>(2 * this.Parameters.M));
-                for (int level = 1; level <= this.MaxLevel; ++level)
+                for (int level = 0; level <= this.MaxLevel; ++level)
                 {
-                    this.Connections.Add(new List<Node>(this.Parameters.M));
+                    this.Connections.Add(new List<Node>(GetM(this.Parameters.M, level)));
                 }
 
-                Func<Node, Node, TDistance> nodesDistance = (x, y) => this.Parameters.Distance(x.Item, y.Item);
+                Func<Node, Node, TDistance> nodesDistance = (x, y) => distance(x.Item, y.Item);
                 this.TravelingCosts = new TravelingCosts<Node, TDistance>(nodesDistance, this);
             }
 
@@ -100,7 +101,7 @@ namespace HNSW.Net
             {
                 var levelNeighbours = this.Connections[level];
                 levelNeighbours.Add(newNeighbour);
-                if (levelNeighbours.Count > this.GetM(level))
+                if (levelNeighbours.Count > GetM(this.Parameters.M, level))
                 {
                     this.Connections[level] = this.SelectBestForConnecting(levelNeighbours);
                 }
@@ -125,11 +126,12 @@ namespace HNSW.Net
             /// Simulations also suggest that 2∙M is a good choice for Mmax0;
             /// setting the parameter higher leads to performance degradation and excessive memory usage."
             /// </remarks>
+            /// <param name="baseM">Base M parameter of the algorithm.</param>
             /// <param name="level">The level of the layer.</param>
             /// <returns>The maximum number of connections.</returns>
-            protected int GetM(int level)
+            protected static int GetM(int baseM, int level)
             {
-                return level == 0 ? 2 * this.Parameters.M : this.Parameters.M;
+                return level == 0 ? 2 * baseM : baseM;
             }
         }
 
@@ -145,9 +147,10 @@ namespace HNSW.Net
             /// <param name="id">The identifier of the node.</param>
             /// <param name="item">The item which is represented by the node.</param>
             /// <param name="maxLevel">The maximum level until which the node exists.</param>
+            /// <param name="distance">The distance function for attached items.</param>
             /// <param name="parameters">The parameters of the algorithm.</param>
-            public NodeAlg3(int id, TItem item, int maxLevel, Parameters parameters)
-                : base(id, item, maxLevel, parameters)
+            public NodeAlg3(int id, TItem item, int maxLevel, Func<TItem, TItem, TDistance> distance, Parameters parameters)
+                : base(id, item, maxLevel, distance, parameters)
             {
             }
 
@@ -162,8 +165,8 @@ namespace HNSW.Net
                 IComparer<Node> fartherIsLess = this.TravelingCosts.Reverse();
                 var candidatesHeap = new BinaryHeap<Node>(candidates, fartherIsLess);
 
-                var result = new List<Node>(this.GetM(this.MaxLevel) + 1);
-                while (candidatesHeap.Buffer.Any() && result.Count < this.GetM(this.MaxLevel))
+                var result = new List<Node>(GetM(this.Parameters.M, this.MaxLevel) + 1);
+                while (candidatesHeap.Buffer.Any() && result.Count < GetM(this.Parameters.M, this.MaxLevel))
                 {
                     result.Add(candidatesHeap.Pop());
                 }
@@ -184,9 +187,10 @@ namespace HNSW.Net
             /// <param name="id">The identifier of the node.</param>
             /// <param name="item">The item which is represented by the node.</param>
             /// <param name="maxLevel">The maximum level until which the node exists.</param>
+            /// <param name="distance">The distance function for attached items.</param>
             /// <param name="parameters">The parameters of the algorithm.</param>
-            public NodeAlg4(int id, TItem item, int maxLevel, Parameters parameters)
-                : base(id, item, maxLevel, parameters)
+            public NodeAlg4(int id, TItem item, int maxLevel, Func<TItem, TItem, TDistance> distance, Parameters parameters)
+                : base(id, item, maxLevel, distance, parameters)
             {
             }
 
@@ -221,7 +225,7 @@ namespace HNSW.Net
                 IComparer<Node> closerIsLess = this.TravelingCosts;
                 IComparer<Node> fartherIsLess = closerIsLess.Reverse();
 
-                var resultHeap = new BinaryHeap<Node>(new List<Node>(this.GetM(this.MaxLevel) + 1), closerIsLess);
+                var resultHeap = new BinaryHeap<Node>(new List<Node>(GetM(this.Parameters.M, this.MaxLevel) + 1), closerIsLess);
                 var candidatesHeap = new BinaryHeap<Node>(candidates, fartherIsLess);
 
                 // expand candidates option is enabled
@@ -240,7 +244,7 @@ namespace HNSW.Net
 
                 // main stage of moving candidates to result
                 var discardedHeap = new BinaryHeap<Node>(new List<Node>(candidatesHeap.Buffer.Count), fartherIsLess);
-                while (candidatesHeap.Buffer.Any() && resultHeap.Buffer.Count < this.GetM(this.MaxLevel))
+                while (candidatesHeap.Buffer.Any() && resultHeap.Buffer.Count < GetM(this.Parameters.M, this.MaxLevel))
                 {
                     var candidate = candidatesHeap.Pop();
                     var farestResult = resultHeap.Buffer.FirstOrDefault();
@@ -259,7 +263,7 @@ namespace HNSW.Net
                 // keep pruned option is enabled
                 if (this.Parameters.KeepPrunedConnections)
                 {
-                    while (discardedHeap.Buffer.Any() && resultHeap.Buffer.Count < this.GetM(this.MaxLevel))
+                    while (discardedHeap.Buffer.Any() && resultHeap.Buffer.Count < GetM(this.Parameters.M, this.MaxLevel))
                     {
                         resultHeap.Push(discardedHeap.Pop());
                     }

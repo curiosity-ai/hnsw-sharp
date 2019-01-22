@@ -1,10 +1,14 @@
 ﻿// <copyright file="SmallWorld.Utils.cs" company="Microsoft">
-// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 // </copyright>
 
 namespace HNSW.Net
 {
+    using System;
+    using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
+    using System.Linq;
 
     /// <content>
     /// The part with the auxiliary tools for hnsw algorithm.
@@ -45,6 +49,32 @@ namespace HNSW.Net
         public static bool DEq(TDistance x, TDistance y)
         {
             return x.CompareTo(y) == 0;
+        }
+
+        /// <summary>
+        /// Runs breadth first search.
+        /// </summary>
+        /// <param name="entryPoint">The entry point.</param>
+        /// <param name="level">The level of the graph where to run BFS.</param>
+        /// <param name="visitAction">The action to perform on each node.</param>
+        internal static void BFS(Node entryPoint, int level, Action<Node> visitAction)
+        {
+            var visitedIds = new HashSet<int>();
+            var expansionQueue = new Queue<Node>(new[] { entryPoint });
+
+            while (expansionQueue.Any())
+            {
+                var currentNode = expansionQueue.Dequeue();
+                if (!visitedIds.Contains(currentNode.Id))
+                {
+                    visitAction(currentNode);
+                    visitedIds.Add(currentNode.Id);
+                    foreach (var neighbour in currentNode.GetConnections(level))
+                    {
+                        expansionQueue.Enqueue(neighbour);
+                    }
+                }
+            }
         }
     }
 }

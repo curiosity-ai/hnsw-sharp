@@ -21,16 +21,12 @@
     <DebugSymbols>true</DebugSymbols>
     <DefineConstants>CODE_ANALYSIS;DEBUG;TRACE</DefineConstants>
     <DebugType>full</DebugType>
-    <RunCodeAnalysis>true</RunCodeAnalysis>
-    <ErrorReport>prompt</ErrorReport>
   </PropertyGroup>
   
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugSymbols>true</DebugSymbols>
     <DefineConstants>CODE_ANALYSIS;TRACE</DefineConstants>
     <DebugType>pdbonly</DebugType>
-    <RunCodeAnalysis>true</RunCodeAnalysis>
-    <ErrorReport>prompt</ErrorReport>
     <Optimize>true</Optimize>    
   </PropertyGroup>
   

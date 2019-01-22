@@ -13,16 +13,21 @@
     <FileVersion>$(BuildLabel)</FileVersion>
     <AssemblyInformationalVersion>$(SourceVersion)</AssemblyInformationalVersion>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
-    <RunCodeAnalysis>true</RunCodeAnalysis>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <!-- code analysis -->
+    <RunCodeAnalysisOnThisProject>true</RunCodeAnalysisOnThisProject>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CodeAnalysisCulture>en-US</CodeAnalysisCulture>
   </PropertyGroup>
   
   <ItemGroup>
     <!-- system level packages -->
     <PackageReference Include="StyleCop.Analyzers" Version="1.0.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.6.2" />
-    <PackageReference Include="Microsoft.SourceLink.Vsts.Git" Version="1.0.0-beta2-18618-05 " PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-18618-05" PrivateAssets="All"/>
   </ItemGroup>
   
   <ItemGroup>
