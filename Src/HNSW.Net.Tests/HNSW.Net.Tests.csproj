@@ -10,6 +10,7 @@
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <AssemblyName>HNSW.Net.Tests</AssemblyName>
     <RootNamespace>HNSW.Net.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
   <PropertyGroup>

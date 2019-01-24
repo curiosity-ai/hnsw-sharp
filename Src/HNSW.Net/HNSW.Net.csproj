@@ -10,6 +10,7 @@
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <AssemblyName>HNSW.Net</AssemblyName>
     <RootNamespace>HNSW.Net</RootNamespace>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <PropertyGroup>
