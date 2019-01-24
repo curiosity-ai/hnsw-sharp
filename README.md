@@ -45,9 +45,10 @@ CosineDistance.SIMDForUnits // uses SIMD and requires arguments to be "units"
 But the API allows to inject any custom distance function tailored specifically for your needs.
 
 ## Contributing
-Your contributions and suggestions are very welcome! Please note that this project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+Your contributions and suggestions are very welcome! 
+Please note that this project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-The contributions to this project are [released](https://help.github.com/articles/github-terms-of-service/#6-contributions-under-repository-license) to the public under the [project's open source license](LICENSE).
+The contributions to this project are [released](https://help.github.com/articles/github-terms-of-service/#6-contributions-under-repository-license) to the public under the [project's open source license](LICENSE). Most contributions require you to agree to a Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us the rights to use your contribution. For details, visit https://cla.microsoft.com.
 
 ### How to contribute
 If you've found a bug or have a feature request then please open an issue with detailed description.
@@ -68,6 +69,8 @@ dotnet test
 ```
 4. Send the pull request from `[username]/[feature]` to `master` branch.
 5. Get approve and merge the changes.
+
+When you submit a pull request, a CLA-bot will automatically determine whether you need to provide a CLA and decorate the PR appropriately (e.g., label, comment). Simply follow the instructions provided by the bot. You will only need to do this once across all repositories using our CLA.
 
 ### Releasing
 The library is distributed as a bundle of sources.
