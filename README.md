@@ -1,3 +1,5 @@
+[![Build Status](https://dev.azure.com/ms/HNSW.Net/_apis/build/status/Microsoft.HNSW.Net?branchName=master)](https://dev.azure.com/ms/HNSW.Net/_build/latest?definitionId=43&branchName=master)
+
 # HNSW.Net
 .Net library for fast approximate nearest neighbours search.
 
