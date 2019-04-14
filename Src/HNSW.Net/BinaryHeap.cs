@@ -7,7 +7,7 @@ namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
+    using System.Diagnostics.CodeAnalysis;
 
     /// <summary>
     /// Binary heap wrapper around the <see cref="IList{T}"/>
@@ -15,32 +15,36 @@ namespace HNSW.Net
     /// But the order of elements can be customized by providing <see cref="IComparer{T}"/> instance.
     /// </summary>
     /// <typeparam name="T">The type of the items in the source list.</typeparam>
-    public class BinaryHeap<T>
+    [SuppressMessage("Performance", "CA1815:Override equals and operator equals on value types", Justification = "By design")]
+    internal struct BinaryHeap<T>
     {
+        private IComparer<T> comparer;
+        private IList<T> buffer;
+
         /// <summary>
-        /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> class.
+        /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> struct.
         /// </summary>
         /// <param name="buffer">The buffer to store heap items.</param>
-        public BinaryHeap(IList<T> buffer)
+        internal BinaryHeap(IList<T> buffer)
             : this(buffer, Comparer<T>.Default)
         {
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> class.
+        /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> struct.
         /// </summary>
         /// <param name="buffer">The buffer to store heap items.</param>
         /// <param name="comparer">The comparer which defines order of items.</param>
-        public BinaryHeap(IList<T> buffer, IComparer<T> comparer)
+        internal BinaryHeap(IList<T> buffer, IComparer<T> comparer)
         {
             if (buffer == null)
             {
                 throw new ArgumentNullException(nameof(buffer));
             }
 
-            this.Buffer = buffer;
-            this.Comparer = comparer;
-            for (int i = 1; i < this.Buffer.Count; ++i)
+            this.buffer = buffer;
+            this.comparer = comparer;
+            for (int i = 1; i < this.buffer.Count; ++i)
             {
                 this.SiftUp(i);
             }
@@ -49,35 +53,35 @@ namespace HNSW.Net
         /// <summary>
         /// Gets the heap comparer.
         /// </summary>
-        public IComparer<T> Comparer { get; private set; }
+        internal IComparer<T> Comparer => this.comparer;
 
         /// <summary>
         /// Gets the buffer of the heap.
         /// </summary>
-        public IList<T> Buffer { get; private set; }
+        internal IList<T> Buffer => this.buffer;
 
         /// <summary>
         /// Pushes item to the heap.
         /// </summary>
         /// <param name="item">The item to push.</param>
-        public void Push(T item)
+        internal void Push(T item)
         {
-            this.Buffer.Add(item);
-            this.SiftUp(this.Buffer.Count - 1);
+            this.buffer.Add(item);
+            this.SiftUp(this.buffer.Count - 1);
         }
 
         /// <summary>
         /// Pops the item from the heap.
         /// </summary>
         /// <returns>The popped item.</returns>
-        public T Pop()
+        internal T Pop()
         {
-            if (this.Buffer.Any())
+            if (this.buffer.Count > 0)
             {
-                var result = this.Buffer.First();
+                var result = this.buffer[0];
 
-                this.Buffer[0] = this.Buffer.Last();
-                this.Buffer.RemoveAt(this.Buffer.Count - 1);
+                this.buffer[0] = this.buffer[this.buffer.Count - 1];
+                this.buffer.RemoveAt(this.buffer.Count - 1);
                 this.SiftDown(0);
 
                 return result;
@@ -93,17 +97,17 @@ namespace HNSW.Net
         /// <param name="i">The position of item where heap property is violated.</param>
         private void SiftDown(int i)
         {
-            while (i < this.Buffer.Count)
+            while (i < this.buffer.Count)
             {
-                int l = (2 * i) + 1;
+                int l = (i << 1) + 1;
                 int r = l + 1;
-                if (l >= this.Buffer.Count)
+                if (l >= this.buffer.Count)
                 {
                     break;
                 }
 
-                int m = r < this.Buffer.Count && this.Comparer.Compare(this.Buffer[l], this.Buffer[r]) < 0 ? r : l;
-                if (this.Comparer.Compare(this.Buffer[m], this.Buffer[i]) <= 0)
+                int m = r < this.buffer.Count && this.comparer.Compare(this.buffer[l], this.buffer[r]) < 0 ? r : l;
+                if (this.comparer.Compare(this.buffer[m], this.buffer[i]) <= 0)
                 {
                     break;
                 }
@@ -122,8 +126,8 @@ namespace HNSW.Net
         {
             while (i > 0)
             {
-                int p = (i - 1) / 2;
-                if (this.Comparer.Compare(this.Buffer[i], this.Buffer[p]) <= 0)
+                int p = (i - 1) >> 1;
+                if (this.comparer.Compare(this.buffer[i], this.buffer[p]) <= 0)
                 {
                     break;
                 }
@@ -140,9 +144,9 @@ namespace HNSW.Net
         /// <param name="j">The second index.</param>
         private void Swap(int i, int j)
         {
-            var temp = this.Buffer[i];
-            this.Buffer[i] = this.Buffer[j];
-            this.Buffer[j] = temp;
+            var temp = this.buffer[i];
+            this.buffer[i] = this.buffer[j];
+            this.buffer[j] = temp;
         }
     }
 }

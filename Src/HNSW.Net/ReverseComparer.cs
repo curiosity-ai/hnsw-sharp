@@ -14,12 +14,7 @@ namespace HNSW.Net
     /// <typeparam name="T">The types of items to comapre.</typeparam>
     public class ReverseComparer<T> : IComparer<T>
     {
-        /// <summary>
-        /// Gets a default sort order comparer for the type specified by the generic argument.
-        /// </summary>
-        public static readonly ReverseComparer<T> Default = new ReverseComparer<T>(Comparer<T>.Default);
-
-        private readonly IComparer<T> comparer = Default;
+        private readonly IComparer<T> comparer;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ReverseComparer{T}"/> class.

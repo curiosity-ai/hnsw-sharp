@@ -22,7 +22,7 @@ namespace HNSW.Net.Tests
         // For cosine distance error can be bigger in theory but for test data it's not the case.
         private const float FloatError = 0.000000596f;
 
-        private IList<float[]> vectors;
+        private IReadOnlyList<float[]> vectors;
 
         /// <summary>
         /// Initializes test resources.
@@ -41,9 +41,6 @@ namespace HNSW.Net.Tests
         public void KNNSearchTest()
         {
             var parameters = new SmallWorld<float[], float>.Parameters();
-            parameters.M = 15;
-            parameters.LevelLambda = 1 / Math.Log(parameters.M);
-
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
             graph.BuildGraph(this.vectors, new Random(42), parameters);
 
@@ -51,6 +48,7 @@ namespace HNSW.Net.Tests
             {
                 var result = graph.KNNSearch(this.vectors[i], 20);
                 var best = result.OrderBy(r => r.Distance).First();
+                Assert.AreEqual(20, result.Count);
                 Assert.AreEqual(i, best.Id);
                 Assert.AreEqual(0, best.Distance, FloatError);
             }

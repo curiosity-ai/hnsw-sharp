@@ -6,7 +6,6 @@
 namespace HNSW.Net
 {
     using System;
-    using System.Collections.Concurrent;
     using System.Collections.Generic;
 
     /// <summary>
@@ -27,16 +26,6 @@ namespace HNSW.Net
         private readonly Func<TItem, TItem, TDistance> distance;
 
         /// <summary>
-        /// The destination point.
-        /// </summary>
-        private readonly TItem destination;
-
-        /// <summary>
-        /// Cached values.
-        /// </summary>
-        private readonly ConcurrentDictionary<TItem, TDistance> cache;
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="TravelingCosts{TItem, TDistance}"/> class.
         /// </summary>
         /// <param name="distance">The distance function.</param>
@@ -44,10 +33,13 @@ namespace HNSW.Net
         public TravelingCosts(Func<TItem, TItem, TDistance> distance, TItem destination)
         {
             this.distance = distance;
-            this.destination = destination;
-
-            this.cache = new ConcurrentDictionary<TItem, TDistance>();
+            this.Destination = destination;
         }
+
+        /// <summary>
+        /// Gets the destinations.
+        /// </summary>
+        public TItem Destination { get; }
 
         /// <summary>
         /// Calculates distance from the departure to the destination.
@@ -56,14 +48,7 @@ namespace HNSW.Net
         /// <returns>The distance from the departure to the destination.</returns>
         public TDistance From(TItem departure)
         {
-            TDistance result;
-            if (!this.cache.TryGetValue(departure, out result))
-            {
-                result = this.distance(departure, this.destination);
-                this.cache.TryAdd(departure, result);
-            }
-
-            return result;
+            return this.distance(departure, this.Destination);
         }
 
         /// <summary>

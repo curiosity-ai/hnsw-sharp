@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
+    <TargetFrameworks>netcoreapp2.1;net462</TargetFrameworks>
+    <Platforms>AnyCPU; x86; x64</Platforms>
+    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+  </PropertyGroup>
+  
+  <PropertyGroup>
     <!-- generic common properties -->
     <VstsBuildNumber>$(BUILD_BUILDNUMBER)</VstsBuildNumber>
     <BuildLabel>$([System.Text.RegularExpressions.Regex]::Replace($(VstsBuildNumber), ".*(\d{4}\.\d{1,2}\.\d{1,2}\.\d+).*", "$1"))</BuildLabel>
@@ -15,7 +21,7 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
   
-  <PropertyGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net462' ">
     <!-- code analysis -->
     <RunCodeAnalysisOnThisProject>true</RunCodeAnalysisOnThisProject>
     <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
@@ -26,8 +32,9 @@
   <ItemGroup>
     <!-- system level packages -->
     <PackageReference Include="StyleCop.Analyzers" Version="1.0.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.6.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.1" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-18618-05" PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.NETCore.App" Version="2.1.0" Condition="'$(TargetFramework)' == 'netcoreapp2.1'"/>
   </ItemGroup>
   
   <ItemGroup>

@@ -1,19 +1,21 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Authors>Microsoft</Authors>
     <Company>Microsoft</Company>
-    <Title>HNSW.Net</Title>
+    <Title>HNSW.Net.Demo</Title>
     <Description>C# library for approximate nearest neighbors search using Hierarchical Navigable Small World graphs</Description>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <AssemblyName>HNSW.Net</AssemblyName>
-    <RootNamespace>HNSW.Net</RootNamespace>
-    <IsPackable>true</IsPackable>
+    <AssemblyName>HNSW.Net.Demo</AssemblyName>
+    <RootNamespace>HNSW.Net.Demo</RootNamespace>
   </PropertyGroup>
 
   <PropertyGroup>
     <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
     <DocumentationFile>bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+    <ApplicationIcon />
+    <OutputType>Exe</OutputType>
+    <StartupObject />
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
 
@@ -31,7 +33,12 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.5.2" />
-    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+    <ProjectReference Include="..\HNSW.Net\HNSW.Net.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <None Update="App.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
