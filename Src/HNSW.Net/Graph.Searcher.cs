@@ -13,7 +13,7 @@ namespace HNSW.Net
     internal partial class Graph<TItem, TDistance>
     {
         /// <summary>
-        /// The graph core.
+        /// The graph searcher.
         /// </summary>
         internal class Searcher
         {
@@ -96,7 +96,7 @@ namespace HNSW.Net
                         int neighbourId = neighboursIds[i];
                         if (!this.visitedSet.Contains(neighbourId))
                         {
-                            // enque perspective neighbours to expansion list
+                            // enqueue perspective neighbours to expansion list
                             farthestResultId = resultHeap.Buffer[0];
                             if (resultHeap.Buffer.Count < k
                             || DistanceUtils.Lt(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))

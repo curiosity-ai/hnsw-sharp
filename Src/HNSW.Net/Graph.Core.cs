@@ -125,7 +125,7 @@ namespace HNSW.Net
             /// </summary>
             /// <param name="fromId">The identifier of the "from" item.</param>
             /// <param name="toId">The identifier of the "to" item.</param>
-            /// <returns>The distance beetween items.</returns>
+            /// <returns>The distance between items.</returns>
             internal TDistance GetDistance(int fromId, int toId)
             {
                 TDistance result;

@@ -13,7 +13,7 @@ namespace HNSW.Net
     using System.Text;
 
     /// <summary>
-    /// The implemnation of a hierarchical small world graph.
+    /// The implementation of a hierarchical small world graph.
     /// </summary>
     /// <typeparam name="TItem">The type of items to connect into small world.</typeparam>
     /// <typeparam name="TDistance">The type of distance between items (expect any numeric type: float, double, decimal, int, ...).</typeparam>
@@ -62,7 +62,7 @@ namespace HNSW.Net
         /// Article: Section 4. Algorithm 1.
         /// </summary>
         /// <param name="items">The items to insert.</param>
-        /// <param name="generator">The random number generator to distribte nodes acrsoss layers.</param>
+        /// <param name="generator">The random number generator to distribute nodes across layers.</param>
         internal void Build(IReadOnlyList<TItem> items, Random generator)
         {
             if (!items?.Any() ?? false)
@@ -165,17 +165,17 @@ namespace HNSW.Net
             }
 
             var bestPeer = this.entryPoint;
-            var destiantionTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
+            var destinationTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
             var resultIds = new List<int>(k + 1);
 
             for (int layer = this.entryPoint.MaxLayer; layer > 0; --layer)
             {
-                this.searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1);
+                this.searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, layer, 1);
                 bestPeer = this.core.Nodes[resultIds[0]];
                 resultIds.Clear();
             }
 
-            this.searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k);
+            this.searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, k);
 
             return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult
             {

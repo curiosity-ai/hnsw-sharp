@@ -19,7 +19,7 @@ namespace HNSW.Net
         /// 2^29 = 536870912
         /// 2^30 = 1073741824
         /// </summary>
-        private const int MaxArrayLength = 1073741824; // 0x7FEFFFFF;
+        private const int MaxArrayLength = 1073741824; // 0x40000000;
 
         /// <summary>
         /// The cached values.
@@ -90,7 +90,7 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Builds key for the pair of poits.
+        /// Builds key for the pair of points.
         /// MakeKey(fromId, toId) == MakeKey(toId, fromId)
         /// </summary>
         /// <param name="fromId">The from point identifier.</param>

@@ -34,7 +34,7 @@ namespace HNSW.Net
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
         /// </summary>
-        /// <param name="distance">The distance funtion to use in the small world.</param>
+        /// <param name="distance">The distance function to use in the small world.</param>
         public SmallWorld(Func<TItem, TItem, TDistance> distance)
         {
             this.distance = distance;
@@ -174,7 +174,7 @@ namespace HNSW.Net
             public NeighbourSelectionHeuristic NeighbourHeuristic { get; set; }
 
             /// <summary>
-            /// Gets or sets the number of candidates to consider as neighbousr for a given node at the graph construction phase.
+            /// Gets or sets the number of candidates to consider as neighbours for a given node at the graph construction phase.
             /// See 'efConstruction' parameter in the article.
             /// </summary>
             public int ConstructionPruning { get; set; }

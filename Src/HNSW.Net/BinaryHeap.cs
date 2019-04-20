@@ -138,7 +138,7 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Swaps items with the specified indicies.
+        /// Swaps items with the specified indices.
         /// </summary>
         /// <param name="i">The first index.</param>
         /// <param name="j">The second index.</param>

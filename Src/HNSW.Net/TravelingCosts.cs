@@ -12,16 +12,16 @@ namespace HNSW.Net
     /// Implementation of distance calculation from an arbitrary point to the given destination.
     /// </summary>
     /// <typeparam name="TItem">Type of the points.</typeparam>
-    /// <typeparam name="TDistance">Type of the diatnce.</typeparam>
+    /// <typeparam name="TDistance">Type of the distance.</typeparam>
     public class TravelingCosts<TItem, TDistance> : IComparer<TItem>
     {
         /// <summary>
-        /// Default distance comaprer.
+        /// Default distance comparer.
         /// </summary>
         private static readonly Comparer<TDistance> DistanceComparer = Comparer<TDistance>.Default;
 
         /// <summary>
-        /// The distance funciton.
+        /// The distance function.
         /// </summary>
         private readonly Func<TItem, TItem, TDistance> distance;
 

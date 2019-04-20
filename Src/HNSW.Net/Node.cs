@@ -10,7 +10,7 @@ namespace HNSW.Net
     using System.Diagnostics.CodeAnalysis;
 
     /// <summary>
-    /// The implementaion of the node in hnsw graph.
+    /// The implementation of the node in hnsw graph.
     /// </summary>
     [SuppressMessage("Usage", "CA2235:Mark all non-serializable fields", Justification = "Analyzer bug: https://github.com/dotnet/roslyn-analyzers/issues/2156")]
     [Serializable]
@@ -50,7 +50,7 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// The abstract class representing algortithm to control node capacity.
+        /// The abstract class representing algorithm to control node capacity.
         /// </summary>
         /// <typeparam name="TItem">The typeof the items in the small world.</typeparam>
         /// <typeparam name="TDistance">The type of the distance in the small world.</typeparam>
