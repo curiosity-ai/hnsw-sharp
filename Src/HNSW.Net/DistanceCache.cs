@@ -24,12 +24,12 @@ namespace HNSW.Net
         /// <summary>
         /// The cached values.
         /// </summary>
-        private TDistance[] values;
+        private readonly TDistance[] values;
 
         /// <summary>
         /// The cached keys;
         /// </summary>
-        private long[] keys;
+        private readonly long[] keys;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DistanceCache{TDistance}"/> class.

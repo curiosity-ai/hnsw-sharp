@@ -15,14 +15,14 @@ namespace HNSW.Net
         /// <summary>
         /// The graph searcher.
         /// </summary>
-        internal class Searcher
+        internal struct Searcher
         {
             private readonly Core core;
             private readonly IList<int> expansionBuffer;
             private readonly VisitedBitSet visitedSet;
 
             /// <summary>
-            /// Initializes a new instance of the <see cref="Searcher"/> class.
+            /// Initializes a new instance of the <see cref="Searcher"/> struct.
             /// </summary>
             /// <param name="core">The core of the graph.</param>
             internal Searcher(Core core)
@@ -41,7 +41,8 @@ namespace HNSW.Net
             /// <param name="resultList">The list of identifiers of the nearest neighbours at the level.</param>
             /// <param name="layer">The layer to perform search at.</param>
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
-            internal void RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, IList<int> resultList, int layer, int k)
+            /// <returns>The number of expanded nodes during the run.</returns>
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, IList<int> resultList, int layer, int k)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -78,6 +79,7 @@ namespace HNSW.Net
                 this.visitedSet.Add(entryPointId);
 
                 // run bfs
+                int visitedNodesCount = 1;
                 while (expansionHeap.Buffer.Count > 0)
                 {
                     // get next candidate to check and expand
@@ -110,6 +112,7 @@ namespace HNSW.Net
                             }
 
                             // update visited list
+                            ++visitedNodesCount;
                             this.visitedSet.Add(neighbourId);
                         }
                     }
@@ -117,6 +120,8 @@ namespace HNSW.Net
 
                 this.expansionBuffer.Clear();
                 this.visitedSet.Clear();
+
+                return visitedNodesCount;
             }
         }
     }

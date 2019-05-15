@@ -12,11 +12,13 @@ namespace HNSW.Net
     using System.Runtime.Serialization.Formatters.Binary;
     using System.Text;
 
+    using static HNSW.Net.EventSources;
+
     /// <summary>
     /// The implementation of a hierarchical small world graph.
     /// </summary>
     /// <typeparam name="TItem">The type of items to connect into small world.</typeparam>
-    /// <typeparam name="TDistance">The type of distance between items (expect any numeric type: float, double, decimal, int, ...).</typeparam>
+    /// <typeparam name="TDistance">The type of distance between items (expects any numeric type: float, double, decimal, int, ...).</typeparam>
     internal partial class Graph<TItem, TDistance>
         where TDistance : struct, IComparable<TDistance>
     {
@@ -34,11 +36,6 @@ namespace HNSW.Net
         /// The entry point.
         /// </summary>
         private Node entryPoint;
-
-        /// <summary>
-        /// The knn searcher.
-        /// </summary>
-        private Searcher searcher;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Graph{TItem, TDistance}"/> class.
@@ -80,71 +77,76 @@ namespace HNSW.Net
 
             for (int nodeId = 1; nodeId < core.Nodes.Count; ++nodeId)
             {
-                /*
-                 * W ← ∅ // list for the currently found nearest elements
-                 * ep ← get enter point for hnsw
-                 * L ← level of ep // top layer for hnsw
-                 * l ← ⌊-ln(unif(0..1))∙mL⌋ // new element’s level
-                 * for lc ← L … l+1
-                 *   W ← SEARCH-LAYER(q, ep, ef=1, lc)
-                 *   ep ← get the nearest element from W to q
-                 * for lc ← min(L, l) … 0
-                 *   W ← SEARCH-LAYER(q, ep, efConstruction, lc)
-                 *   neighbors ← SELECT-NEIGHBORS(q, W, M, lc) // alg. 3 or alg. 4
-                 *     for each e ∈ neighbors // shrink connections if needed
-                 *       eConn ← neighbourhood(e) at layer lc
-                 *       if │eConn│ > Mmax // shrink connections of e if lc = 0 then Mmax = Mmax0
-                 *         eNewConn ← SELECT-NEIGHBORS(e, eConn, Mmax, lc) // alg. 3 or alg. 4
-                 *         set neighbourhood(e) at layer lc to eNewConn
-                 *   ep ← W
-                 * if l > L
-                 *   set enter point for hnsw to q
-                 */
-
-                // zoom in and find the best peer on the same level as newNode
-                var bestPeer = entryPoint;
-                var currentNode = core.Nodes[nodeId];
-                var currentNodeTravelingCosts = new TravelingCosts<int, TDistance>(nodeDistance, nodeId);
-                for (int layer = bestPeer.MaxLayer; layer > currentNode.MaxLayer; --layer)
+                using (new ScopeLatencyTracker(GraphBuildEventSource.Instance?.GraphInsertNodeLatencyReporter))
                 {
-                    searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1);
-                    bestPeer = core.Nodes[neighboursIdsBuffer[0]];
-                    neighboursIdsBuffer.Clear();
-                }
+                    /*
+                     * W ← ∅ // list for the currently found nearest elements
+                     * ep ← get enter point for hnsw
+                     * L ← level of ep // top layer for hnsw
+                     * l ← ⌊-ln(unif(0..1))∙mL⌋ // new element’s level
+                     * for lc ← L … l+1
+                     *   W ← SEARCH-LAYER(q, ep, ef=1, lc)
+                     *   ep ← get the nearest element from W to q
+                     * for lc ← min(L, l) … 0
+                     *   W ← SEARCH-LAYER(q, ep, efConstruction, lc)
+                     *   neighbors ← SELECT-NEIGHBORS(q, W, M, lc) // alg. 3 or alg. 4
+                     *     for each e ∈ neighbors // shrink connections if needed
+                     *       eConn ← neighbourhood(e) at layer lc
+                     *       if │eConn│ > Mmax // shrink connections of e if lc = 0 then Mmax = Mmax0
+                     *         eNewConn ← SELECT-NEIGHBORS(e, eConn, Mmax, lc) // alg. 3 or alg. 4
+                     *         set neighbourhood(e) at layer lc to eNewConn
+                     *   ep ← W
+                     * if l > L
+                     *   set enter point for hnsw to q
+                     */
 
-                // connecting new node to the small world
-                for (int layer = Math.Min(currentNode.MaxLayer, entryPoint.MaxLayer); layer >= 0; --layer)
-                {
-                    searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, this.Parameters.ConstructionPruning);
-                    var bestNeighboursIds = core.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
-
-                    for (int i = 0; i < bestNeighboursIds.Count; ++i)
+                    // zoom in and find the best peer on the same level as newNode
+                    var bestPeer = entryPoint;
+                    var currentNode = core.Nodes[nodeId];
+                    var currentNodeTravelingCosts = new TravelingCosts<int, TDistance>(nodeDistance, nodeId);
+                    for (int layer = bestPeer.MaxLayer; layer > currentNode.MaxLayer; --layer)
                     {
-                        int newNeighbourId = bestNeighboursIds[i];
-                        core.Algorithm.Connect(currentNode, core.Nodes[newNeighbourId], layer);
-                        core.Algorithm.Connect(core.Nodes[newNeighbourId], currentNode, layer);
-
-                        // if distance from newNode to newNeighbour is better than to bestPeer => update bestPeer
-                        if (DistanceUtils.Lt(currentNodeTravelingCosts.From(newNeighbourId), currentNodeTravelingCosts.From(bestPeer.Id)))
-                        {
-                            bestPeer = core.Nodes[newNeighbourId];
-                        }
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1);
+                        bestPeer = core.Nodes[neighboursIdsBuffer[0]];
+                        neighboursIdsBuffer.Clear();
                     }
 
-                    neighboursIdsBuffer.Clear();
-                }
+                    // connecting new node to the small world
+                    for (int layer = Math.Min(currentNode.MaxLayer, entryPoint.MaxLayer); layer >= 0; --layer)
+                    {
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, this.Parameters.ConstructionPruning);
+                        var bestNeighboursIds = core.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
 
-                // zoom out to the highest level
-                if (currentNode.MaxLayer > entryPoint.MaxLayer)
-                {
-                    entryPoint = currentNode;
+                        for (int i = 0; i < bestNeighboursIds.Count; ++i)
+                        {
+                            int newNeighbourId = bestNeighboursIds[i];
+                            core.Algorithm.Connect(currentNode, core.Nodes[newNeighbourId], layer);
+                            core.Algorithm.Connect(core.Nodes[newNeighbourId], currentNode, layer);
+
+                            // if distance from newNode to newNeighbour is better than to bestPeer => update bestPeer
+                            if (DistanceUtils.Lt(currentNodeTravelingCosts.From(newNeighbourId), currentNodeTravelingCosts.From(bestPeer.Id)))
+                            {
+                                bestPeer = core.Nodes[newNeighbourId];
+                            }
+                        }
+
+                        neighboursIdsBuffer.Clear();
+                    }
+
+                    // zoom out to the highest level
+                    if (currentNode.MaxLayer > entryPoint.MaxLayer)
+                    {
+                        entryPoint = currentNode;
+                    }
+
+                    // report distance cache hit rate
+                    GraphBuildEventSource.Instance?.CoreGetDistanceCacheHitRateReporter?.Invoke(core.DistanceCacheHitRate);
                 }
             }
 
             // construction is done
             this.core = core;
             this.entryPoint = entryPoint;
-            this.searcher = searcher;
         }
 
         /// <summary>
@@ -157,32 +159,38 @@ namespace HNSW.Net
         /// <returns>The list of the nearest neighbours.</returns>
         internal IList<SmallWorld<TItem, TDistance>.KNNSearchResult> KNearest(TItem destination, int k)
         {
-            // TODO: hack we know that destination id is -1.
-            TDistance RuntimeDistance(int x, int y)
+            using (new ScopeLatencyTracker(GraphSearchEventSource.Instance?.GraphKNearestLatencyReporter))
             {
-                int nodeId = x >= 0 ? x : y;
-                return this.distance(destination, this.core.Items[nodeId]);
+                // TODO: hack we know that destination id is -1.
+                TDistance RuntimeDistance(int x, int y)
+                {
+                    int nodeId = x >= 0 ? x : y;
+                    return this.distance(destination, this.core.Items[nodeId]);
+                }
+
+                var bestPeer = this.entryPoint;
+                var searcher = new Searcher(this.core);
+                var destiantionTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
+                var resultIds = new List<int>(k + 1);
+
+                int visitedNodesCount = 0;
+                for (int layer = this.entryPoint.MaxLayer; layer > 0; --layer)
+                {
+                    visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1);
+                    bestPeer = this.core.Nodes[resultIds[0]];
+                    resultIds.Clear();
+                }
+
+                visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k);
+                GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
+
+                return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult
+                {
+                    Id = id,
+                    Item = this.core.Items[id],
+                    Distance = RuntimeDistance(id, -1)
+                }).ToList();
             }
-
-            var bestPeer = this.entryPoint;
-            var destinationTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
-            var resultIds = new List<int>(k + 1);
-
-            for (int layer = this.entryPoint.MaxLayer; layer > 0; --layer)
-            {
-                this.searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, layer, 1);
-                bestPeer = this.core.Nodes[resultIds[0]];
-                resultIds.Clear();
-            }
-
-            this.searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, k);
-
-            return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult
-            {
-                Id = id,
-                Item = this.core.Items[id],
-                Distance = RuntimeDistance(id, -1)
-            }).ToList();
         }
 
         /// <summary>

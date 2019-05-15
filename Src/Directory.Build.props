@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>netcoreapp2.1;net462</TargetFrameworks>
     <Platforms>AnyCPU; x86; x64</Platforms>
-    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+    <LangVersion>7.3</LangVersion>
   </PropertyGroup>
   
   <PropertyGroup>
@@ -29,12 +29,15 @@
     <CodeAnalysisCulture>en-US</CodeAnalysisCulture>
   </PropertyGroup>
   
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.1' ">
+    <RuntimeFrameworkVersion>2.1.0</RuntimeFrameworkVersion>
+  </PropertyGroup>
+  
   <ItemGroup>
     <!-- system level packages -->
     <PackageReference Include="StyleCop.Analyzers" Version="1.0.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.1" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-18618-05" PrivateAssets="All"/>
-    <PackageReference Include="Microsoft.NETCore.App" Version="2.1.0" Condition="'$(TargetFramework)' == 'netcoreapp2.1'"/>
   </ItemGroup>
   
   <ItemGroup>

@@ -10,6 +10,8 @@ namespace HNSW.Net
     using System.IO;
     using System.Runtime.Serialization.Formatters.Binary;
 
+    using static HNSW.Net.EventSources;
+
     /// <content>
     /// The implementation of graph core structure.
     /// </content>
@@ -29,6 +31,16 @@ namespace HNSW.Net
             /// The distance cache.
             /// </summary>
             private readonly DistanceCache<TDistance> distanceCache;
+
+            /// <summary>
+            /// The number of times cache was hit.
+            /// </summary>
+            private long distanceCacheHitCount;
+
+            /// <summary>
+            /// The number of times distance calculation was requested.
+            /// </summary>
+            private long distanceCalculationsCount;
 
             /// <summary>
             /// Initializes a new instance of the <see cref="Core"/> class.
@@ -56,6 +68,9 @@ namespace HNSW.Net
                 {
                     this.distanceCache = new DistanceCache<TDistance>(this.Items.Count);
                 }
+
+                this.distanceCacheHitCount = 0;
+                this.distanceCalculationsCount = 0;
             }
 
             /// <summary>
@@ -77,6 +92,11 @@ namespace HNSW.Net
             /// Gets parameters of the small world.
             /// </summary>
             internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; private set; }
+
+            /// <summary>
+            /// Gets distance cache hit rate.
+            /// </summary>
+            internal float DistanceCacheHitRate => (float)this.distanceCacheHitCount / this.distanceCalculationsCount;
 
             /// <summary>
             /// Initializes node array for building graph.
@@ -128,15 +148,19 @@ namespace HNSW.Net
             /// <returns>The distance between items.</returns>
             internal TDistance GetDistance(int fromId, int toId)
             {
+                this.distanceCalculationsCount++;
+
                 TDistance result;
                 if (this.distanceCache != null
                 && this.distanceCache.TryGetValue(fromId, toId, out result))
                 {
+                    this.distanceCacheHitCount++;
                     return result;
                 }
 
                 result = this.distance(this.Items[fromId], this.Items[toId]);
                 this.distanceCache?.SetValue(fromId, toId, result);
+
                 return result;
             }
 

@@ -9,7 +9,6 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using System.IO;
-    using System.Linq;
     using System.Runtime.Serialization.Formatters.Binary;
 
     /// <summary>
@@ -96,7 +95,7 @@ namespace HNSW.Net
             using (var stream = new MemoryStream())
             {
                 var formatter = new BinaryFormatter();
-                formatter.Serialize(stream, this.graph.Parameters);
+                formatter.Serialize(stream, this.graph.Parameters.M);
                 formatter.Serialize(stream, this.graph.Serialize());
                 return stream.ToArray();
             }
@@ -112,9 +111,10 @@ namespace HNSW.Net
             using (var stream = new MemoryStream(bytes))
             {
                 var formatter = new BinaryFormatter();
-                var parameters = (Parameters)formatter.Deserialize(stream);
+                var m = (int)formatter.Deserialize(stream);
                 var graphBytes = (byte[])formatter.Deserialize(stream);
 
+                var parameters = new Parameters { M = m };
                 var graph = new Graph<TItem, TDistance>(this.distance, parameters);
                 graph.Deserialize(items, graphBytes);
 
@@ -136,8 +136,6 @@ namespace HNSW.Net
         /// Parameters of the algorithm.
         /// </summary>
         [SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "By Design")]
-        [SuppressMessage("Usage", "CA2235:Mark all non-serializable fields", Justification = "Analyzer bug: https://github.com/dotnet/roslyn-analyzers/issues/2156")]
-        [Serializable]
         public class Parameters
         {
             /// <summary>
@@ -150,8 +148,8 @@ namespace HNSW.Net
                 this.NeighbourHeuristic = NeighbourSelectionHeuristic.SelectSimple;
                 this.ConstructionPruning = 200;
                 this.ExpandBestSelection = false;
-                this.KeepPrunedConnections = true;
-                this.EnableDistanceCacheForConstruction = true;
+                this.KeepPrunedConnections = false;
+                this.EnableDistanceCacheForConstruction = false;
             }
 
             /// <summary>
