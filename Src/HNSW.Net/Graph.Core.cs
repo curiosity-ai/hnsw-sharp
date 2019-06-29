@@ -51,26 +51,26 @@ namespace HNSW.Net
             internal Core(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters, IReadOnlyList<TItem> items)
             {
                 this.distance = distance;
-                this.Parameters = parameters;
-                this.Items = items;
+                Parameters = parameters;
+                Items = items;
 
-                switch (this.Parameters.NeighbourHeuristic)
+                switch (Parameters.NeighbourHeuristic)
                 {
                     case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectSimple:
-                        this.Algorithm = new Node.Algorithm3<TItem, TDistance>(this);
+                        Algorithm = new Node.Algorithm3<TItem, TDistance>(this);
                         break;
                     case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectHeuristic:
-                        this.Algorithm = new Node.Algorithm4<TItem, TDistance>(this);
+                        Algorithm = new Node.Algorithm4<TItem, TDistance>(this);
                         break;
                 }
 
-                if (this.Parameters.EnableDistanceCacheForConstruction)
+                if (Parameters.EnableDistanceCacheForConstruction)
                 {
-                    this.distanceCache = new DistanceCache<TDistance>(this.Items.Count);
+                    distanceCache = new DistanceCache<TDistance>(Items.Count);
                 }
 
-                this.distanceCacheHitCount = 0;
-                this.distanceCalculationsCount = 0;
+                distanceCacheHitCount = 0;
+                distanceCalculationsCount = 0;
             }
 
             /// <summary>
@@ -96,7 +96,7 @@ namespace HNSW.Net
             /// <summary>
             /// Gets distance cache hit rate.
             /// </summary>
-            internal float DistanceCacheHitRate => (float)this.distanceCacheHitCount / this.distanceCalculationsCount;
+            internal float DistanceCacheHitRate => (float)distanceCacheHitCount / distanceCalculationsCount;
 
             /// <summary>
             /// Initializes node array for building graph.
@@ -104,13 +104,13 @@ namespace HNSW.Net
             /// <param name="generator">The random number generator to assign layers.</param>
             internal void AllocateNodes(Random generator)
             {
-                var nodes = new List<Node>(this.Items.Count);
-                for (int id = 0; id < this.Items.Count; ++id)
+                var nodes = new List<Node>(Items.Count);
+                for (int id = 0; id < Items.Count; ++id)
                 {
-                    nodes.Add(this.Algorithm.NewNode(id, RandomLayer(generator, this.Parameters.LevelLambda)));
+                    nodes.Add(Algorithm.NewNode(id, RandomLayer(generator, Parameters.LevelLambda)));
                 }
 
-                this.Nodes = nodes;
+                Nodes = nodes;
             }
 
             /// <summary>
@@ -122,7 +122,7 @@ namespace HNSW.Net
                 using (var stream = new MemoryStream())
                 {
                     var formatter = new BinaryFormatter();
-                    formatter.Serialize(stream, this.Nodes);
+                    formatter.Serialize(stream, Nodes);
                     return stream.ToArray();
                 }
             }
@@ -136,7 +136,7 @@ namespace HNSW.Net
                 using (var stream = new MemoryStream(bytes))
                 {
                     var formatter = new BinaryFormatter();
-                    this.Nodes = (List<Node>)formatter.Deserialize(stream);
+                    Nodes = (List<Node>)formatter.Deserialize(stream);
                 }
             }
 
@@ -148,18 +148,17 @@ namespace HNSW.Net
             /// <returns>The distance between items.</returns>
             internal TDistance GetDistance(int fromId, int toId)
             {
-                this.distanceCalculationsCount++;
+                distanceCalculationsCount++;
 
                 TDistance result;
-                if (this.distanceCache != null
-                && this.distanceCache.TryGetValue(fromId, toId, out result))
+                if (distanceCache != null && distanceCache.TryGetValue(fromId, toId, out result))
                 {
-                    this.distanceCacheHitCount++;
+                    distanceCacheHitCount++;
                     return result;
                 }
 
-                result = this.distance(this.Items[fromId], this.Items[toId]);
-                this.distanceCache?.SetValue(fromId, toId, result);
+                result = distance(Items[fromId], Items[toId]);
+                distanceCache?.SetValue(fromId, toId, result);
 
                 return result;
             }

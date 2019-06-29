@@ -17,18 +17,17 @@ namespace HNSW.Net
     /// </summary>
     /// <typeparam name="TItem">The type of items to connect into small world.</typeparam>
     /// <typeparam name="TDistance">The type of distance between items (expect any numeric type: float, double, decimal, int, ...).</typeparam>
-    public partial class SmallWorld<TItem, TDistance>
-        where TDistance : struct, IComparable<TDistance>
+    public partial class SmallWorld<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
     {
         /// <summary>
         /// The distance function in the items space.
         /// </summary>
-        private readonly Func<TItem, TItem, TDistance> distance;
+        private readonly Func<TItem, TItem, TDistance> Distance;
 
         /// <summary>
         /// The hierarchical small world graph instance.
         /// </summary>
-        private Graph<TItem, TDistance> graph;
+        private Graph<TItem, TDistance> Graph;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
@@ -36,7 +35,7 @@ namespace HNSW.Net
         /// <param name="distance">The distance function to use in the small world.</param>
         public SmallWorld(Func<TItem, TItem, TDistance> distance)
         {
-            this.distance = distance;
+            Distance = distance;
         }
 
         /// <summary>
@@ -65,9 +64,9 @@ namespace HNSW.Net
         /// <param name="parameters">Parameters of the algorithm.</param>
         public void BuildGraph(IReadOnlyList<TItem> items, Random generator, Parameters parameters)
         {
-            var graph = new Graph<TItem, TDistance>(this.distance, parameters);
+            var graph = new Graph<TItem, TDistance>(Distance, parameters);
             graph.Build(items, generator);
-            this.graph = graph;
+            Graph = graph;
         }
 
         /// <summary>
@@ -78,7 +77,7 @@ namespace HNSW.Net
         /// <returns>The list of found nearest neighbours.</returns>
         public IList<KNNSearchResult> KNNSearch(TItem item, int k)
         {
-            return this.graph.KNearest(item, k);
+            return Graph.KNearest(item, k);
         }
 
         /// <summary>
@@ -87,7 +86,7 @@ namespace HNSW.Net
         /// <returns>Bytes representing the graph.</returns>
         public byte[] SerializeGraph()
         {
-            if (this.graph == null)
+            if (Graph == null)
             {
                 throw new InvalidOperationException("The graph does not exist");
             }
@@ -95,8 +94,8 @@ namespace HNSW.Net
             using (var stream = new MemoryStream())
             {
                 var formatter = new BinaryFormatter();
-                formatter.Serialize(stream, this.graph.Parameters.M);
-                formatter.Serialize(stream, this.graph.Serialize());
+                formatter.Serialize(stream, Graph.Parameters.M);
+                formatter.Serialize(stream, Graph.Serialize());
                 return stream.ToArray();
             }
         }
@@ -115,10 +114,10 @@ namespace HNSW.Net
                 var graphBytes = (byte[])formatter.Deserialize(stream);
 
                 var parameters = new Parameters { M = m };
-                var graph = new Graph<TItem, TDistance>(this.distance, parameters);
+                var graph = new Graph<TItem, TDistance>(Distance, parameters);
                 graph.Deserialize(items, graphBytes);
 
-                this.graph = graph;
+                Graph = graph;
             }
         }
 
@@ -129,7 +128,7 @@ namespace HNSW.Net
         /// <returns>String representation of the graph's edges.</returns>
         public string Print()
         {
-            return this.graph.Print();
+            return Graph.Print();
         }
 
         /// <summary>
@@ -143,13 +142,13 @@ namespace HNSW.Net
             /// </summary>
             public Parameters()
             {
-                this.M = 10;
-                this.LevelLambda = 1 / Math.Log(this.M);
-                this.NeighbourHeuristic = NeighbourSelectionHeuristic.SelectSimple;
-                this.ConstructionPruning = 200;
-                this.ExpandBestSelection = false;
-                this.KeepPrunedConnections = false;
-                this.EnableDistanceCacheForConstruction = false;
+                M = 10;
+                LevelLambda = 1 / Math.Log(M);
+                NeighbourHeuristic = NeighbourSelectionHeuristic.SelectSimple;
+                ConstructionPruning = 200;
+                ExpandBestSelection = false;
+                KeepPrunedConnections = false;
+                EnableDistanceCacheForConstruction = false;
             }
 
             /// <summary>

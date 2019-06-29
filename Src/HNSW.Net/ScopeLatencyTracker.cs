@@ -14,8 +14,8 @@ namespace HNSW.Net
     /// </summary>
     internal struct ScopeLatencyTracker : IDisposable
     {
-        private long startTimestamp;
-        private Action<float> latencyCallback;
+        private long StartTimestamp;
+        private Action<float> LatencyCallback;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ScopeLatencyTracker"/> struct.
@@ -23,8 +23,8 @@ namespace HNSW.Net
         /// <param name="callback">The latency reporting callback to associate with the scope.</param>
         internal ScopeLatencyTracker(Action<float> callback)
         {
-            this.startTimestamp = callback != null ? Stopwatch.GetTimestamp() : 0;
-            this.latencyCallback = callback;
+            StartTimestamp = callback != null ? Stopwatch.GetTimestamp() : 0;
+            LatencyCallback = callback;
         }
 
         /// <summary>
@@ -33,10 +33,10 @@ namespace HNSW.Net
         public void Dispose()
         {
             const long ticksPerMicroSecond = TimeSpan.TicksPerMillisecond / 1000;
-            if (this.latencyCallback != null)
+            if (LatencyCallback != null)
             {
-                long ellapsedMuS = (Stopwatch.GetTimestamp() - this.startTimestamp) / ticksPerMicroSecond;
-                this.latencyCallback(ellapsedMuS);
+                long ellapsedMuS = (Stopwatch.GetTimestamp() - StartTimestamp) / ticksPerMicroSecond;
+                LatencyCallback(ellapsedMuS);
             }
         }
     }

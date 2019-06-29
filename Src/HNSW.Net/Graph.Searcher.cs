@@ -28,8 +28,8 @@ namespace HNSW.Net
             internal Searcher(Core core)
             {
                 this.core = core;
-                this.expansionBuffer = new List<int>();
-                this.visitedSet = new VisitedBitSet(core.Nodes.Count);
+                expansionBuffer = new List<int>();
+                visitedSet = new VisitedBitSet(core.Nodes.Count);
             }
 
             /// <summary>
@@ -72,11 +72,11 @@ namespace HNSW.Net
                 // prepare collections
                 // TODO: Optimize by providing buffers
                 var resultHeap = new BinaryHeap<int>(resultList, fartherIsOnTop);
-                var expansionHeap = new BinaryHeap<int>(this.expansionBuffer, closerIsOnTop);
+                var expansionHeap = new BinaryHeap<int>(expansionBuffer, closerIsOnTop);
 
                 resultHeap.Push(entryPointId);
                 expansionHeap.Push(entryPointId);
-                this.visitedSet.Add(entryPointId);
+                visitedSet.Add(entryPointId);
 
                 // run bfs
                 int visitedNodesCount = 1;
@@ -92,11 +92,11 @@ namespace HNSW.Net
                     }
 
                     // expand candidate
-                    var neighboursIds = this.core.Nodes[toExpandId][layer];
+                    var neighboursIds = core.Nodes[toExpandId][layer];
                     for (int i = 0; i < neighboursIds.Count; ++i)
                     {
                         int neighbourId = neighboursIds[i];
-                        if (!this.visitedSet.Contains(neighbourId))
+                        if (!visitedSet.Contains(neighbourId))
                         {
                             // enqueue perspective neighbours to expansion list
                             farthestResultId = resultHeap.Buffer[0];
@@ -113,13 +113,13 @@ namespace HNSW.Net
 
                             // update visited list
                             ++visitedNodesCount;
-                            this.visitedSet.Add(neighbourId);
+                            visitedSet.Add(neighbourId);
                         }
                     }
                 }
 
-                this.expansionBuffer.Clear();
-                this.visitedSet.Clear();
+                expansionBuffer.Clear();
+                visitedSet.Clear();
 
                 return visitedNodesCount;
             }

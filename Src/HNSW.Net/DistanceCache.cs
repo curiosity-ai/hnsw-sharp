@@ -42,14 +42,14 @@ namespace HNSW.Net
             long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
             capacity = capacity < MaxArrayLength ? capacity : MaxArrayLength;
 
-            this.keys = new long[(int)capacity];
-            this.values = new TDistance[(int)capacity];
+            keys = new long[(int)capacity];
+            values = new TDistance[(int)capacity];
 
             // TODO: may be there is a better way to warm up cache and force OS to allocate pages
-            for (int i = 0; i < this.keys.Length; ++i)
+            for (int i = 0; i < keys.Length; ++i)
             {
-                this.keys[i] = -1;
-                this.values[i] = default;
+                keys[i] = -1;
+                values[i] = default;
             }
         }
 
@@ -65,9 +65,9 @@ namespace HNSW.Net
             long key = MakeKey(fromId, toId);
             int hash = (int)(key & (MaxArrayLength - 1));
 
-            if (this.keys[hash] == key)
+            if (keys[hash] == key)
             {
-                distance = this.values[hash];
+                distance = values[hash];
                 return true;
             }
 
@@ -85,8 +85,8 @@ namespace HNSW.Net
         {
             long key = MakeKey(fromId, toId);
             int hash = (int)(key & (MaxArrayLength - 1));
-            this.keys[hash] = key;
-            this.values[hash] = distance;
+            keys[hash] = key;
+            values[hash] = distance;
         }
 
         /// <summary>

@@ -84,7 +84,7 @@ namespace HNSW.Net
                 throw new NotSupportedException($"{nameof(VectorUtils.NormalizeSIMD)} is not supported");
             }
 
-            float normFactor = 1 / MagnitudeSIMD(vector);
+            float normFactor = 1f / MagnitudeSIMD(vector);
             int step = Vector<float>.Count;
 
             int i, to = vector.Length - step;

@@ -23,7 +23,7 @@ namespace HNSW.Net
         /// <summary>
         /// The distance function.
         /// </summary>
-        private readonly Func<TItem, TItem, TDistance> distance;
+        private readonly Func<TItem, TItem, TDistance> Distance;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TravelingCosts{TItem, TDistance}"/> class.
@@ -32,8 +32,8 @@ namespace HNSW.Net
         /// <param name="destination">The destination point.</param>
         public TravelingCosts(Func<TItem, TItem, TDistance> distance, TItem destination)
         {
-            this.distance = distance;
-            this.Destination = destination;
+            Distance = distance;
+            Destination = destination;
         }
 
         /// <summary>
@@ -48,7 +48,7 @@ namespace HNSW.Net
         /// <returns>The distance from the departure to the destination.</returns>
         public TDistance From(TItem departure)
         {
-            return this.distance(departure, this.Destination);
+            return Distance(departure, Destination);
         }
 
         /// <summary>
@@ -63,8 +63,8 @@ namespace HNSW.Net
         /// </returns>
         public int Compare(TItem x, TItem y)
         {
-            var fromX = this.From(x);
-            var fromY = this.From(y);
+            var fromX = From(x);
+            var fromY = From(y);
             return DistanceComparer.Compare(fromX, fromY);
         }
     }

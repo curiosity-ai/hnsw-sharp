@@ -14,7 +14,7 @@ namespace HNSW.Net
     /// <typeparam name="T">The types of items to comapre.</typeparam>
     public class ReverseComparer<T> : IComparer<T>
     {
-        private readonly IComparer<T> comparer;
+        private readonly IComparer<T> Comparer;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ReverseComparer{T}"/> class.
@@ -22,13 +22,13 @@ namespace HNSW.Net
         /// <param name="comparer">The comparer to invert.</param>
         public ReverseComparer(IComparer<T> comparer)
         {
-            this.comparer = comparer;
+            Comparer = comparer;
         }
 
         /// <inheritdoc />
         public int Compare(T x, T y)
         {
-            return this.comparer.Compare(y, x);
+            return Comparer.Compare(y, x);
         }
     }
 

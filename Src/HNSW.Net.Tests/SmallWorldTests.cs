@@ -31,7 +31,7 @@ namespace HNSW.Net.Tests
         public void TestInitialize()
         {
             var data = File.ReadAllLines(@"vectors.txt");
-            this.vectors = data.Select(r => Array.ConvertAll(r.Split('\t'), x => float.Parse(x, CultureInfo.CurrentCulture))).ToList();
+            vectors = data.Select(r => Array.ConvertAll(r.Split('\t'), x => float.Parse(x, CultureInfo.CurrentCulture))).ToList();
         }
 
         /// <summary>
@@ -42,11 +42,11 @@ namespace HNSW.Net.Tests
         {
             var parameters = new SmallWorld<float[], float>.Parameters();
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-            graph.BuildGraph(this.vectors, new Random(42), parameters);
+            graph.BuildGraph(vectors, new Random(42), parameters);
 
-            for (int i = 0; i < this.vectors.Count; ++i)
+            for (int i = 0; i < vectors.Count; ++i)
             {
-                var result = graph.KNNSearch(this.vectors[i], 20);
+                var result = graph.KNNSearch(vectors[i], 20);
                 var best = result.OrderBy(r => r.Distance).First();
                 Assert.AreEqual(20, result.Count);
                 Assert.AreEqual(i, best.Id);
@@ -72,14 +72,14 @@ namespace HNSW.Net.Tests
                 };
 
                 var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-                graph.BuildGraph(this.vectors, new Random(42), parameters);
+                graph.BuildGraph(vectors, new Random(42), parameters);
 
                 buffer = graph.SerializeGraph();
                 original = graph.Print();
             }
 
             var copy = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-            copy.DeserializeGraph(this.vectors, buffer);
+            copy.DeserializeGraph(vectors, buffer);
 
             Assert.AreEqual(original, copy.Print());
         }

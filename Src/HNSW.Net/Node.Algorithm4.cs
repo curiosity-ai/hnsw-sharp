@@ -20,15 +20,13 @@ namespace HNSW.Net
         /// </summary>
         /// <typeparam name="TItem">The typeof the items in the small world.</typeparam>
         /// <typeparam name="TDistance">The type of the distance in the small world.</typeparam>
-        internal sealed class Algorithm4<TItem, TDistance> : Algorithm<TItem, TDistance>
-            where TDistance : struct, IComparable<TDistance>
+        internal sealed class Algorithm4<TItem, TDistance> : Algorithm<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
         {
             /// <summary>
             /// Initializes a new instance of the <see cref="Algorithm4{TItem, TDistance}"/> class.
             /// </summary>
             /// <param name="graphCore">The core of the graph.</param>
-            public Algorithm4(Graph<TItem, TDistance>.Core graphCore)
-                : base(graphCore)
+            public Algorithm4(Graph<TItem, TDistance>.Core graphCore) : base(graphCore)
             {
             }
 
@@ -63,18 +61,18 @@ namespace HNSW.Net
                 IComparer<int> fartherIsOnTop = travelingCosts;
                 IComparer<int> closerIsOnTop = fartherIsOnTop.Reverse();
 
-                var layerM = this.GetM(layer);
+                var layerM = GetM(layer);
 
                 var resultHeap = new BinaryHeap<int>(new List<int>(layerM + 1), fartherIsOnTop);
                 var candidatesHeap = new BinaryHeap<int>(candidatesIds, closerIsOnTop);
 
                 // expand candidates option is enabled
-                if (this.graphCore.Parameters.ExpandBestSelection)
+                if (GraphCore.Parameters.ExpandBestSelection)
                 {
                     var visited = new HashSet<int>(candidatesHeap.Buffer);
                     foreach (var candidateId in candidatesHeap.Buffer)
                     {
-                        foreach (var candidateNeighbourId in this.graphCore.Nodes[candidateId][layer])
+                        foreach (var candidateNeighbourId in GraphCore.Nodes[candidateId][layer])
                         {
                             if (!visited.Contains(candidateNeighbourId))
                             {
@@ -92,19 +90,18 @@ namespace HNSW.Net
                     var candidateId = candidatesHeap.Pop();
                     var farestResultId = resultHeap.Buffer.FirstOrDefault();
 
-                    if (!resultHeap.Buffer.Any()
-                    || DistanceUtils.Lt(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
+                    if (!resultHeap.Buffer.Any() || DistanceUtils.Lt(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
                     {
                         resultHeap.Push(candidateId);
                     }
-                    else if (this.graphCore.Parameters.KeepPrunedConnections)
+                    else if (GraphCore.Parameters.KeepPrunedConnections)
                     {
                         discardedHeap.Push(candidateId);
                     }
                 }
 
                 // keep pruned option is enabled
-                if (this.graphCore.Parameters.KeepPrunedConnections)
+                if (GraphCore.Parameters.KeepPrunedConnections)
                 {
                     while (discardedHeap.Buffer.Any() && resultHeap.Buffer.Count < layerM)
                     {

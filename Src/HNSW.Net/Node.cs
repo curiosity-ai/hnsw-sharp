@@ -22,7 +22,7 @@ namespace HNSW.Net
         /// <summary>
         /// Gets the identifier of the node.
         /// </summary>
-        public int Id => this.id;
+        public int Id => id;
 
         /// <summary>
         /// Gets the max layer where the node is presented.
@@ -31,7 +31,7 @@ namespace HNSW.Net
         {
             get
             {
-                return this.connections.Count - 1;
+                return connections.Count - 1;
             }
         }
 
@@ -45,7 +45,7 @@ namespace HNSW.Net
             get
             {
                 // connections[i] must implement IReadOnlyList
-                return this.connections[layer] as IReadOnlyList<int>;
+                return connections[layer] as IReadOnlyList<int>;
             }
         }
 
@@ -55,18 +55,17 @@ namespace HNSW.Net
         /// <typeparam name="TItem">The typeof the items in the small world.</typeparam>
         /// <typeparam name="TDistance">The type of the distance in the small world.</typeparam>
         [SuppressMessage("StyleCop.CSharp.MaintainabilityRules", "SA1401:Fields must be private", Justification = "By design")]
-        internal abstract class Algorithm<TItem, TDistance>
-            where TDistance : struct, IComparable<TDistance>
+        internal abstract class Algorithm<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
         {
             /// <summary>
             /// Gives access to the core of the graph.
             /// </summary>
-            protected readonly Graph<TItem, TDistance>.Core graphCore;
+            protected readonly Graph<TItem, TDistance>.Core GraphCore;
 
             /// <summary>
             /// Cache of the distance function between the nodes.
             /// </summary>
-            protected readonly Func<int, int, TDistance> nodeDistance;
+            protected readonly Func<int, int, TDistance> NodeDistance;
 
             /// <summary>
             /// Initializes a new instance of the <see cref="Algorithm{TItem, TDistance}"/> class
@@ -74,8 +73,8 @@ namespace HNSW.Net
             /// <param name="graphCore">The core of the graph.</param>
             public Algorithm(Graph<TItem, TDistance>.Core graphCore)
             {
-                this.graphCore = graphCore;
-                this.nodeDistance = graphCore.GetDistance;
+                GraphCore = graphCore;
+                NodeDistance = graphCore.GetDistance;
             }
 
             /// <summary>
@@ -91,7 +90,7 @@ namespace HNSW.Net
                 for (int layer = 0; layer <= maxLayer; ++layer)
                 {
                     // M + 1 neighbours to not realloc in AddConnection when the level is full
-                    int layerM = this.GetM(layer) + 1;
+                    int layerM = GetM(layer) + 1;
                     connections.Add(new List<int>(layerM));
                 }
 
@@ -127,7 +126,7 @@ namespace HNSW.Net
             /// <returns>The maximum number of connections.</returns>
             internal int GetM(int layer)
             {
-                return layer == 0 ? 2 * this.graphCore.Parameters.M : this.graphCore.Parameters.M;
+                return layer == 0 ? 2 * GraphCore.Parameters.M : GraphCore.Parameters.M;
             }
 
             /// <summary>
@@ -139,10 +138,10 @@ namespace HNSW.Net
             internal void Connect(Node node, Node neighbour, int layer)
             {
                 node.connections[layer].Add(neighbour.id);
-                if (node.connections[layer].Count > this.GetM(layer))
+                if (node.connections[layer].Count > GetM(layer))
                 {
-                    var travelingCosts = new TravelingCosts<int, TDistance>(this.nodeDistance, node.id);
-                    node.connections[layer] = this.SelectBestForConnecting(node.connections[layer], travelingCosts, layer);
+                    var travelingCosts = new TravelingCosts<int, TDistance>(NodeDistance, node.id);
+                    node.connections[layer] = SelectBestForConnecting(node.connections[layer], travelingCosts, layer);
                 }
             }
         }

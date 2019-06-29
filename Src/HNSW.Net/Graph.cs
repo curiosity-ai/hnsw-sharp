@@ -19,23 +19,22 @@ namespace HNSW.Net
     /// </summary>
     /// <typeparam name="TItem">The type of items to connect into small world.</typeparam>
     /// <typeparam name="TDistance">The type of distance between items (expects any numeric type: float, double, decimal, int, ...).</typeparam>
-    internal partial class Graph<TItem, TDistance>
-        where TDistance : struct, IComparable<TDistance>
+    internal partial class Graph<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
     {
         /// <summary>
         /// The distance.
         /// </summary>
-        private readonly Func<TItem, TItem, TDistance> distance;
+        private readonly Func<TItem, TItem, TDistance> Distance;
 
         /// <summary>
         /// The core.
         /// </summary>
-        private Core core;
+        private Core GraphCore;
 
         /// <summary>
         /// The entry point.
         /// </summary>
-        private Node entryPoint;
+        private Node EntryPoint;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Graph{TItem, TDistance}"/> class.
@@ -44,8 +43,8 @@ namespace HNSW.Net
         /// <param name="parameters">The parameters of the world.</param>
         internal Graph(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters)
         {
-            this.distance = distance;
-            this.Parameters = parameters;
+            Distance = distance;
+            Parameters = parameters;
         }
 
         /// <summary>
@@ -67,7 +66,7 @@ namespace HNSW.Net
                 return;
             }
 
-            var core = new Core(this.distance, this.Parameters, items);
+            var core = new Core(Distance, Parameters, items);
             core.AllocateNodes(generator);
 
             var entryPoint = core.Nodes[0];
@@ -114,7 +113,7 @@ namespace HNSW.Net
                     // connecting new node to the small world
                     for (int layer = Math.Min(currentNode.MaxLayer, entryPoint.MaxLayer); layer >= 0; --layer)
                     {
-                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, this.Parameters.ConstructionPruning);
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, Parameters.ConstructionPruning);
                         var bestNeighboursIds = core.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
 
                         for (int i = 0; i < bestNeighboursIds.Count; ++i)
@@ -145,8 +144,8 @@ namespace HNSW.Net
             }
 
             // construction is done
-            this.core = core;
-            this.entryPoint = entryPoint;
+            GraphCore = core;
+            EntryPoint = entryPoint;
         }
 
         /// <summary>
@@ -165,19 +164,19 @@ namespace HNSW.Net
                 TDistance RuntimeDistance(int x, int y)
                 {
                     int nodeId = x >= 0 ? x : y;
-                    return this.distance(destination, this.core.Items[nodeId]);
+                    return Distance(destination, GraphCore.Items[nodeId]);
                 }
 
-                var bestPeer = this.entryPoint;
-                var searcher = new Searcher(this.core);
+                var bestPeer = EntryPoint;
+                var searcher = new Searcher(GraphCore);
                 var destiantionTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
                 var resultIds = new List<int>(k + 1);
 
                 int visitedNodesCount = 0;
-                for (int layer = this.entryPoint.MaxLayer; layer > 0; --layer)
+                for (int layer = EntryPoint.MaxLayer; layer > 0; --layer)
                 {
                     visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1);
-                    bestPeer = this.core.Nodes[resultIds[0]];
+                    bestPeer = GraphCore.Nodes[resultIds[0]];
                     resultIds.Clear();
                 }
 
@@ -187,7 +186,7 @@ namespace HNSW.Net
                 return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult
                 {
                     Id = id,
-                    Item = this.core.Items[id],
+                    Item = GraphCore.Items[id],
                     Distance = RuntimeDistance(id, -1)
                 }).ToList();
             }
@@ -202,8 +201,8 @@ namespace HNSW.Net
             using (var stream = new MemoryStream())
             {
                 var formatter = new BinaryFormatter();
-                formatter.Serialize(stream, this.core.Serialize());
-                formatter.Serialize(stream, this.entryPoint);
+                formatter.Serialize(stream, GraphCore.Serialize());
+                formatter.Serialize(stream, EntryPoint);
                 return stream.ToArray();
             }
         }
@@ -220,11 +219,11 @@ namespace HNSW.Net
                 var formatter = new BinaryFormatter();
 
                 var coreBytes = (byte[])formatter.Deserialize(stream);
-                var core = new Core(this.distance, this.Parameters, items);
+                var core = new Core(Distance, Parameters, items);
                 core.Deserialize(coreBytes);
 
-                this.entryPoint = (Node)formatter.Deserialize(stream);
-                this.core = core;
+                EntryPoint = (Node)formatter.Deserialize(stream);
+                GraphCore = core;
             }
         }
 
@@ -235,10 +234,10 @@ namespace HNSW.Net
         internal string Print()
         {
             var buffer = new StringBuilder();
-            for (int layer = this.entryPoint.MaxLayer; layer >= 0; --layer)
+            for (int layer = EntryPoint.MaxLayer; layer >= 0; --layer)
             {
                 buffer.AppendLine($"[LEVEL {layer}]");
-                BFS(this.core, this.entryPoint, layer, (node) =>
+                BFS(GraphCore, EntryPoint, layer, (node) =>
                 {
                     var neighbours = string.Join(", ", node[layer]);
                     buffer.AppendLine($"({node.Id}) -> {{{neighbours}}}");

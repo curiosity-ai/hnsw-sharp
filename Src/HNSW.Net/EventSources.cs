@@ -49,10 +49,10 @@ namespace HNSW.Net
                 : base(EventSourceSettings.EtwSelfDescribingEventFormat)
             {
                 var coreGetDistanceCacheHitRate = new EventCounter("GetDistance.CacheHitRate", this);
-                this.CoreGetDistanceCacheHitRateReporter = (float value) => WriteMetricIfEnabled(this, coreGetDistanceCacheHitRate, value);
+                CoreGetDistanceCacheHitRateReporter = (float value) => WriteMetricIfEnabled(this, coreGetDistanceCacheHitRate, value);
 
                 var graphInsertNodeLatency = new EventCounter("InsertNode.Latency", this);
-                this.GraphInsertNodeLatencyReporter = (float value) => WriteMetricIfEnabled(this, graphInsertNodeLatency, value);
+                GraphInsertNodeLatencyReporter = (float value) => WriteMetricIfEnabled(this, graphInsertNodeLatency, value);
             }
 
             /// <summary>
@@ -88,10 +88,10 @@ namespace HNSW.Net
                 : base(EventSourceSettings.EtwSelfDescribingEventFormat)
             {
                 var graphKNearestLatency = new EventCounter("KNearest.Latency", this);
-                this.GraphKNearestLatencyReporter = (float value) => WriteMetricIfEnabled(this, graphKNearestLatency, value);
+                GraphKNearestLatencyReporter = (float value) => WriteMetricIfEnabled(this, graphKNearestLatency, value);
 
                 var graphKNearestVisitedNodes = new EventCounter("KNearest.VisitedNodes", this);
-                this.GraphKNearestVisitedNodesReporter = (float value) => WriteMetricIfEnabled(this, graphKNearestVisitedNodes, value);
+                GraphKNearestVisitedNodesReporter = (float value) => WriteMetricIfEnabled(this, graphKNearestVisitedNodes, value);
             }
 
             /// <summary>

@@ -229,12 +229,12 @@ namespace HNSW.Net.Demo
             public MetricsEventListener(EventSource eventSource)
             {
                 this.eventSource = eventSource;
-                this.EnableEvents(this.eventSource, EventLevel.LogAlways, EventKeywords.All, new Dictionary<string, string> { { "EventCounterIntervalSec", "1" } });
+                EnableEvents(this.eventSource, EventLevel.LogAlways, EventKeywords.All, new Dictionary<string, string> { { "EventCounterIntervalSec", "1" } });
             }
 
             public override void Dispose()
             {
-                this.DisableEvents(this.eventSource);
+                DisableEvents(eventSource);
                 base.Dispose();
             }
 

@@ -38,7 +38,7 @@ namespace HNSW.Net.Tests
             {
                 const string input = "Hello, World!";
                 var heap = new BinaryHeap<char>(input.ToList());
-                this.AssertMaxHeap(heap);
+                AssertMaxHeap(heap);
             }
         }
 
@@ -54,7 +54,7 @@ namespace HNSW.Net.Tests
                 heap.Push(i);
             }
 
-            this.AssertMaxHeap(heap);
+            AssertMaxHeap(heap);
 
             int top = heap.Buffer.First();
             while (heap.Buffer.Any())

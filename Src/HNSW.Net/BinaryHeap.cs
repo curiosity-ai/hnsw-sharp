@@ -46,19 +46,19 @@ namespace HNSW.Net
             this.comparer = comparer;
             for (int i = 1; i < this.buffer.Count; ++i)
             {
-                this.SiftUp(i);
+                SiftUp(i);
             }
         }
 
         /// <summary>
         /// Gets the heap comparer.
         /// </summary>
-        internal IComparer<T> Comparer => this.comparer;
+        internal IComparer<T> Comparer => comparer;
 
         /// <summary>
         /// Gets the buffer of the heap.
         /// </summary>
-        internal IList<T> Buffer => this.buffer;
+        internal IList<T> Buffer => buffer;
 
         /// <summary>
         /// Pushes item to the heap.
@@ -66,8 +66,8 @@ namespace HNSW.Net
         /// <param name="item">The item to push.</param>
         internal void Push(T item)
         {
-            this.buffer.Add(item);
-            this.SiftUp(this.buffer.Count - 1);
+            buffer.Add(item);
+            SiftUp(buffer.Count - 1);
         }
 
         /// <summary>
@@ -76,13 +76,13 @@ namespace HNSW.Net
         /// <returns>The popped item.</returns>
         internal T Pop()
         {
-            if (this.buffer.Count > 0)
+            if (buffer.Count > 0)
             {
-                var result = this.buffer[0];
+                var result = buffer[0];
 
-                this.buffer[0] = this.buffer[this.buffer.Count - 1];
-                this.buffer.RemoveAt(this.buffer.Count - 1);
-                this.SiftDown(0);
+                buffer[0] = buffer[buffer.Count - 1];
+                buffer.RemoveAt(buffer.Count - 1);
+                SiftDown(0);
 
                 return result;
             }
@@ -97,22 +97,22 @@ namespace HNSW.Net
         /// <param name="i">The position of item where heap property is violated.</param>
         private void SiftDown(int i)
         {
-            while (i < this.buffer.Count)
+            while (i < buffer.Count)
             {
                 int l = (i << 1) + 1;
                 int r = l + 1;
-                if (l >= this.buffer.Count)
+                if (l >= buffer.Count)
                 {
                     break;
                 }
 
-                int m = r < this.buffer.Count && this.comparer.Compare(this.buffer[l], this.buffer[r]) < 0 ? r : l;
-                if (this.comparer.Compare(this.buffer[m], this.buffer[i]) <= 0)
+                int m = r < buffer.Count && comparer.Compare(buffer[l], buffer[r]) < 0 ? r : l;
+                if (comparer.Compare(buffer[m], buffer[i]) <= 0)
                 {
                     break;
                 }
 
-                this.Swap(i, m);
+                Swap(i, m);
                 i = m;
             }
         }
@@ -127,12 +127,12 @@ namespace HNSW.Net
             while (i > 0)
             {
                 int p = (i - 1) >> 1;
-                if (this.comparer.Compare(this.buffer[i], this.buffer[p]) <= 0)
+                if (comparer.Compare(buffer[i], buffer[p]) <= 0)
                 {
                     break;
                 }
 
-                this.Swap(i, p);
+                Swap(i, p);
                 i = p;
             }
         }
@@ -144,9 +144,9 @@ namespace HNSW.Net
         /// <param name="j">The second index.</param>
         private void Swap(int i, int j)
         {
-            var temp = this.buffer[i];
-            this.buffer[i] = this.buffer[j];
-            this.buffer[j] = temp;
+            var temp = buffer[i];
+            buffer[i] = buffer[j];
+            buffer[j] = temp;
         }
     }
 }

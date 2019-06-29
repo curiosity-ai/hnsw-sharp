@@ -19,15 +19,13 @@ namespace HNSW.Net
         /// </summary>
         /// <typeparam name="TItem">The typeof the items in the small world.</typeparam>
         /// <typeparam name="TDistance">The type of the distance in the small world.</typeparam>
-        internal class Algorithm3<TItem, TDistance> : Algorithm<TItem, TDistance>
-            where TDistance : struct, IComparable<TDistance>
+        internal class Algorithm3<TItem, TDistance> : Algorithm<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
         {
             /// <summary>
             /// Initializes a new instance of the <see cref="Algorithm3{TItem, TDistance}"/> class.
             /// </summary>
             /// <param name="graphCore">The core of the graph.</param>
-            public Algorithm3(Graph<TItem, TDistance>.Core graphCore)
-                : base(graphCore)
+            public Algorithm3(Graph<TItem, TDistance>.Core graphCore) : base(graphCore)
             {
             }
 
@@ -40,7 +38,7 @@ namespace HNSW.Net
                  */
 
                 // !NO COPY! in-place selection
-                var bestN = this.GetM(layer);
+                var bestN = GetM(layer);
                 var candidatesHeap = new BinaryHeap<int>(candidatesIds, travelingCosts);
                 while (candidatesHeap.Buffer.Count > bestN)
                 {

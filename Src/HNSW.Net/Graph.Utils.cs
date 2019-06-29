@@ -54,7 +54,7 @@ namespace HNSW.Net
             /// <param name="nodesCount">The number of nodes to track in the set.</param>
             internal VisitedBitSet(int nodesCount)
             {
-                this.buffer = new int[(nodesCount >> 5) + 1];
+                buffer = new int[(nodesCount >> 5) + 1];
             }
 
             /// <summary>
@@ -64,7 +64,7 @@ namespace HNSW.Net
             /// <returns>True if the node is in the set.</returns>
             internal bool Contains(int nodeId)
             {
-                int carrier = this.buffer[nodeId >> 5];
+                int carrier = buffer[nodeId >> 5];
                 return ((1 << (nodeId & 31)) & carrier) != 0;
             }
 
@@ -75,7 +75,7 @@ namespace HNSW.Net
             internal void Add(int nodeId)
             {
                 int mask = 1 << (nodeId & 31);
-                this.buffer[nodeId >> 5] |= mask;
+                buffer[nodeId >> 5] |= mask;
             }
 
             /// <summary>
@@ -83,7 +83,7 @@ namespace HNSW.Net
             /// </summary>
             internal void Clear()
             {
-                Array.Clear(this.buffer, 0, this.buffer.Length);
+                Array.Clear(buffer, 0, buffer.Length);
             }
         }
     }
