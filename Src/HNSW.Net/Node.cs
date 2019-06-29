@@ -16,13 +16,9 @@ namespace HNSW.Net
     [Serializable]
     internal partial struct Node
     {
-        private int id;
-        private IList<IList<int>> connections;
+        private List<List<int>> Connections;
 
-        /// <summary>
-        /// Gets the identifier of the node.
-        /// </summary>
-        public int Id => id;
+        public int Id;
 
         /// <summary>
         /// Gets the max layer where the node is presented.
@@ -31,7 +27,7 @@ namespace HNSW.Net
         {
             get
             {
-                return connections.Count - 1;
+                return Connections.Count - 1;
             }
         }
 
@@ -40,12 +36,11 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="layer">The layer to get connections at.</param>
         /// <returns>The connections of the node at the given layer.</returns>
-        public IReadOnlyList<int> this[int layer]
+        public List<int> this[int layer]
         {
             get
             {
-                // connections[i] must implement IReadOnlyList
-                return connections[layer] as IReadOnlyList<int>;
+                return Connections[layer];
             }
         }
 
@@ -57,20 +52,10 @@ namespace HNSW.Net
         [SuppressMessage("StyleCop.CSharp.MaintainabilityRules", "SA1401:Fields must be private", Justification = "By design")]
         internal abstract class Algorithm<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
         {
-            /// <summary>
-            /// Gives access to the core of the graph.
-            /// </summary>
             protected readonly Graph<TItem, TDistance>.Core GraphCore;
 
-            /// <summary>
-            /// Cache of the distance function between the nodes.
-            /// </summary>
             protected readonly Func<int, int, TDistance> NodeDistance;
 
-            /// <summary>
-            /// Initializes a new instance of the <see cref="Algorithm{TItem, TDistance}"/> class
-            /// </summary>
-            /// <param name="graphCore">The core of the graph.</param>
             public Algorithm(Graph<TItem, TDistance>.Core graphCore)
             {
                 GraphCore = graphCore;
@@ -78,15 +63,14 @@ namespace HNSW.Net
             }
 
             /// <summary>
-            /// Creates a new instance of the <see cref="Node"/> struct.
-            /// Controls the exact type of connection lists.
+            /// Creates a new instance of the <see cref="Node"/> struct. Controls the exact type of connection lists.
             /// </summary>
             /// <param name="nodeId">The identifier of the node.</param>
             /// <param name="maxLayer">The max layer where the node is presented.</param>
             /// <returns>The new instance.</returns>
             internal virtual Node NewNode(int nodeId, int maxLayer)
             {
-                var connections = new List<IList<int>>(maxLayer + 1);
+                var connections = new List<List<int>>(maxLayer + 1);
                 for (int layer = 0; layer <= maxLayer; ++layer)
                 {
                     // M + 1 neighbours to not realloc in AddConnection when the level is full
@@ -96,8 +80,8 @@ namespace HNSW.Net
 
                 return new Node
                 {
-                    id = nodeId,
-                    connections = connections
+                    Id = nodeId,
+                    Connections = connections
                 };
             }
 
@@ -108,7 +92,7 @@ namespace HNSW.Net
             /// <param name="travelingCosts">Traveling costs to compare candidates.</param>
             /// <param name="layer">The layer of the neighbourhood.</param>
             /// <returns>Best nodes selected from the candidates.</returns>
-            internal abstract IList<int> SelectBestForConnecting(IList<int> candidatesIds, TravelingCosts<int, TDistance> travelingCosts, int layer);
+            internal abstract List<int> SelectBestForConnecting(List<int> candidatesIds, TravelingCosts<int, TDistance> travelingCosts, int layer);
 
             /// <summary>
             /// Get maximum allowed connections for the given level.
@@ -137,11 +121,12 @@ namespace HNSW.Net
             /// <param name="layer">The layer to add neighbour to.</param>
             internal void Connect(Node node, Node neighbour, int layer)
             {
-                node.connections[layer].Add(neighbour.id);
-                if (node.connections[layer].Count > GetM(layer))
+                var nodeLayer = node[layer];
+                nodeLayer.Add(neighbour.Id);
+                if (nodeLayer.Count > GetM(layer))
                 {
-                    var travelingCosts = new TravelingCosts<int, TDistance>(NodeDistance, node.id);
-                    node.connections[layer] = SelectBestForConnecting(node.connections[layer], travelingCosts, layer);
+                    var travelingCosts = new TravelingCosts<int, TDistance>(NodeDistance, node.Id);
+                    node.Connections[layer] = SelectBestForConnecting(nodeLayer, travelingCosts, layer);
                 }
             }
         }

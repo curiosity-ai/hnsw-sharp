@@ -10,63 +10,36 @@ namespace HNSW.Net
     using System.Diagnostics.CodeAnalysis;
 
     /// <summary>
-    /// Binary heap wrapper around the <see cref="IList{T}"/>
-    /// It's a max-heap implementation i.e. the maximum element is always on top.
-    /// But the order of elements can be customized by providing <see cref="IComparer{T}"/> instance.
+    /// Binary heap wrapper around the <see cref="IList{T}"/> It's a max-heap implementation i.e. the maximum element is always on top. But the order of elements can be customized by providing <see cref="IComparer{T}"/> instance.
     /// </summary>
     /// <typeparam name="T">The type of the items in the source list.</typeparam>
     [SuppressMessage("Performance", "CA1815:Override equals and operator equals on value types", Justification = "By design")]
     internal struct BinaryHeap<T>
     {
-        private IComparer<T> comparer;
-        private IList<T> buffer;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> struct.
-        /// </summary>
-        /// <param name="buffer">The buffer to store heap items.</param>
-        internal BinaryHeap(IList<T> buffer) : this(buffer, Comparer<T>.Default)
+        internal IComparer<T> Comparer;
+        internal List<T> Buffer;
+        internal BinaryHeap(List<T> buffer) : this(buffer, Comparer<T>.Default) { }
+        internal BinaryHeap(List<T> buffer, IComparer<T> comparer)
         {
+            Buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+            Comparer = comparer;
+            for (int i = 1; i < Buffer.Count; ++i) { SiftUp(i); }
         }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> struct.
-        /// </summary>
-        /// <param name="buffer">The buffer to store heap items.</param>
-        /// <param name="comparer">The comparer which defines order of items.</param>
-        internal BinaryHeap(IList<T> buffer, IComparer<T> comparer)
-        {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
-
-            this.buffer = buffer;
-            this.comparer = comparer;
-            for (int i = 1; i < this.buffer.Count; ++i)
-            {
-                SiftUp(i);
-            }
-        }
-
-        internal IComparer<T> Comparer => comparer;
-
-        internal IList<T> Buffer => buffer;
 
         internal void Push(T item)
         {
-            buffer.Add(item);
-            SiftUp(buffer.Count - 1);
+            Buffer.Add(item);
+            SiftUp(Buffer.Count - 1);
         }
 
         internal T Pop()
         {
-            if (buffer.Count > 0)
+            if (Buffer.Count > 0)
             {
-                var result = buffer[0];
+                var result = Buffer[0];
 
-                buffer[0] = buffer[buffer.Count - 1];
-                buffer.RemoveAt(buffer.Count - 1);
+                Buffer[0] = Buffer[Buffer.Count - 1];
+                Buffer.RemoveAt(Buffer.Count - 1);
                 SiftDown(0);
 
                 return result;
@@ -76,23 +49,22 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Restores the heap property starting from i'th position down to the bottom
-        /// given that the downstream items fulfill the rule.
+        /// Restores the heap property starting from i'th position down to the bottom given that the downstream items fulfill the rule.
         /// </summary>
         /// <param name="i">The position of item where heap property is violated.</param>
         private void SiftDown(int i)
         {
-            while (i < buffer.Count)
+            while (i < Buffer.Count)
             {
                 int l = (i << 1) + 1;
                 int r = l + 1;
-                if (l >= buffer.Count)
+                if (l >= Buffer.Count)
                 {
                     break;
                 }
 
-                int m = r < buffer.Count && comparer.Compare(buffer[l], buffer[r]) < 0 ? r : l;
-                if (comparer.Compare(buffer[m], buffer[i]) <= 0)
+                int m = r < Buffer.Count && Comparer.Compare(Buffer[l], Buffer[r]) < 0 ? r : l;
+                if (Comparer.Compare(Buffer[m], Buffer[i]) <= 0)
                 {
                     break;
                 }
@@ -103,8 +75,7 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Restores the heap property starting from i'th position up to the head
-        /// given that the upstream items fulfill the rule.
+        /// Restores the heap property starting from i'th position up to the head given that the upstream items fulfill the rule.
         /// </summary>
         /// <param name="i">The position of item where heap property is violated.</param>
         private void SiftUp(int i)
@@ -112,7 +83,7 @@ namespace HNSW.Net
             while (i > 0)
             {
                 int p = (i - 1) >> 1;
-                if (comparer.Compare(buffer[i], buffer[p]) <= 0)
+                if (Comparer.Compare(Buffer[i], Buffer[p]) <= 0)
                 {
                     break;
                 }
@@ -124,9 +95,9 @@ namespace HNSW.Net
 
         private void Swap(int i, int j)
         {
-            var temp = buffer[i];
-            buffer[i] = buffer[j];
-            buffer[j] = temp;
+            var temp = Buffer[i];
+            Buffer[i] = Buffer[j];
+            Buffer[j] = temp;
         }
     }
 }

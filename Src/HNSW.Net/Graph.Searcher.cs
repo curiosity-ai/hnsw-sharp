@@ -18,7 +18,7 @@ namespace HNSW.Net
         internal struct Searcher
         {
             private readonly Core Core;
-            private readonly IList<int> ExpansionBuffer;
+            private readonly List<int> ExpansionBuffer;
             private readonly VisitedBitSet VisitedSet;
 
             /// <summary>
@@ -42,7 +42,7 @@ namespace HNSW.Net
             /// <param name="layer">The layer to perform search at.</param>
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
             /// <returns>The number of expanded nodes during the run.</returns>
-            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, IList<int> resultList, int layer, int k)
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k)
             {
                 /*
                  * v ← ep // set of visited elements

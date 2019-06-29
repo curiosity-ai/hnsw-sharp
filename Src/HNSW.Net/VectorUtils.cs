@@ -9,16 +9,8 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Numerics;
 
-    /// <summary>
-    /// Utilities to work with vectors.
-    /// </summary>
     public static class VectorUtils
     {
-        /// <summary>
-        /// Calculates magnitude of the vector.
-        /// </summary>
-        /// <param name="vector">The vector to calculate magnitude for.</param>
-        /// <returns>The magnitude.</returns>
         public static float Magnitude(IList<float> vector)
         {
             float magnitude = 0.0f;
@@ -30,10 +22,6 @@ namespace HNSW.Net
             return (float)Math.Sqrt(magnitude);
         }
 
-        /// <summary>
-        /// Turns vector to unit vector.
-        /// </summary>
-        /// <param name="vector">The vector to normalize.</param>
         public static void Normalize(IList<float> vector)
         {
             float normFactor = 1 / Magnitude(vector);
@@ -43,11 +31,6 @@ namespace HNSW.Net
             }
         }
 
-        /// <summary>
-        /// SIMD optimized version of <see cref="Magnitude(IList{float})"/>
-        /// </summary>
-        /// <param name="vector">The vector to calculate magnitude for.</param>
-        /// <returns>The magnitude.</returns>
         public static float MagnitudeSIMD(float[] vector)
         {
             if (!Vector.IsHardwareAccelerated)
@@ -73,10 +56,6 @@ namespace HNSW.Net
             return (float)Math.Sqrt(magnitude);
         }
 
-        /// <summary>
-        /// SIMD optimized version of <see cref="Normalize(IList{float})"/>
-        /// </summary>
-        /// <param name="vector">The vector to normalize.</param>
         public static void NormalizeSIMD(float[] vector)
         {
             if (!Vector.IsHardwareAccelerated)

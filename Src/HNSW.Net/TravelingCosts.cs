@@ -15,37 +15,18 @@ namespace HNSW.Net
     /// <typeparam name="TDistance">Type of the distance.</typeparam>
     public class TravelingCosts<TItem, TDistance> : IComparer<TItem>
     {
-        /// <summary>
-        /// Default distance comparer.
-        /// </summary>
         private static readonly Comparer<TDistance> DistanceComparer = Comparer<TDistance>.Default;
 
-        /// <summary>
-        /// The distance function.
-        /// </summary>
         private readonly Func<TItem, TItem, TDistance> Distance;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="TravelingCosts{TItem, TDistance}"/> class.
-        /// </summary>
-        /// <param name="distance">The distance function.</param>
-        /// <param name="destination">The destination point.</param>
         public TravelingCosts(Func<TItem, TItem, TDistance> distance, TItem destination)
         {
             Distance = distance;
             Destination = destination;
         }
 
-        /// <summary>
-        /// Gets the destinations.
-        /// </summary>
         public TItem Destination { get; }
 
-        /// <summary>
-        /// Calculates distance from the departure to the destination.
-        /// </summary>
-        /// <param name="departure">The point of departure.</param>
-        /// <returns>The distance from the departure to the destination.</returns>
         public TDistance From(TItem departure)
         {
             return Distance(departure, Destination);

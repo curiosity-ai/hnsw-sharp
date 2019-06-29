@@ -9,9 +9,6 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Linq;
 
-    /// <content>
-    /// The part with <see cref="Algorithm4{TItem, TDistance}"/> implementation.
-    /// </content>
     internal partial struct Node
     {
         /// <summary>
@@ -22,16 +19,12 @@ namespace HNSW.Net
         /// <typeparam name="TDistance">The type of the distance in the small world.</typeparam>
         internal sealed class Algorithm4<TItem, TDistance> : Algorithm<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
         {
-            /// <summary>
-            /// Initializes a new instance of the <see cref="Algorithm4{TItem, TDistance}"/> class.
-            /// </summary>
-            /// <param name="graphCore">The core of the graph.</param>
             public Algorithm4(Graph<TItem, TDistance>.Core graphCore) : base(graphCore)
             {
             }
 
             /// <inheritdoc/>
-            internal override IList<int> SelectBestForConnecting(IList<int> candidatesIds, TravelingCosts<int, TDistance> travelingCosts, int layer)
+            internal override List<int> SelectBestForConnecting(List<int> candidatesIds, TravelingCosts<int, TDistance> travelingCosts, int layer)
             {
                 /*
                  * q ← this
