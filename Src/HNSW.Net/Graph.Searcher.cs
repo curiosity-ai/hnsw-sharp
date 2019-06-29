@@ -17,9 +17,9 @@ namespace HNSW.Net
         /// </summary>
         internal struct Searcher
         {
-            private readonly Core core;
-            private readonly IList<int> expansionBuffer;
-            private readonly VisitedBitSet visitedSet;
+            private readonly Core Core;
+            private readonly IList<int> ExpansionBuffer;
+            private readonly VisitedBitSet VisitedSet;
 
             /// <summary>
             /// Initializes a new instance of the <see cref="Searcher"/> struct.
@@ -27,9 +27,9 @@ namespace HNSW.Net
             /// <param name="core">The core of the graph.</param>
             internal Searcher(Core core)
             {
-                this.core = core;
-                expansionBuffer = new List<int>();
-                visitedSet = new VisitedBitSet(core.Nodes.Count);
+                Core = core;
+                ExpansionBuffer = new List<int>();
+                VisitedSet = new VisitedBitSet(core.Nodes.Count);
             }
 
             /// <summary>
@@ -72,11 +72,11 @@ namespace HNSW.Net
                 // prepare collections
                 // TODO: Optimize by providing buffers
                 var resultHeap = new BinaryHeap<int>(resultList, fartherIsOnTop);
-                var expansionHeap = new BinaryHeap<int>(expansionBuffer, closerIsOnTop);
+                var expansionHeap = new BinaryHeap<int>(ExpansionBuffer, closerIsOnTop);
 
                 resultHeap.Push(entryPointId);
                 expansionHeap.Push(entryPointId);
-                visitedSet.Add(entryPointId);
+                VisitedSet.Add(entryPointId);
 
                 // run bfs
                 int visitedNodesCount = 1;
@@ -92,11 +92,11 @@ namespace HNSW.Net
                     }
 
                     // expand candidate
-                    var neighboursIds = core.Nodes[toExpandId][layer];
+                    var neighboursIds = Core.Nodes[toExpandId][layer];
                     for (int i = 0; i < neighboursIds.Count; ++i)
                     {
                         int neighbourId = neighboursIds[i];
-                        if (!visitedSet.Contains(neighbourId))
+                        if (!VisitedSet.Contains(neighbourId))
                         {
                             // enqueue perspective neighbours to expansion list
                             farthestResultId = resultHeap.Buffer[0];
@@ -113,13 +113,13 @@ namespace HNSW.Net
 
                             // update visited list
                             ++visitedNodesCount;
-                            visitedSet.Add(neighbourId);
+                            VisitedSet.Add(neighbourId);
                         }
                     }
                 }
 
-                expansionBuffer.Clear();
-                visitedSet.Clear();
+                ExpansionBuffer.Clear();
+                VisitedSet.Clear();
 
                 return visitedNodesCount;
             }

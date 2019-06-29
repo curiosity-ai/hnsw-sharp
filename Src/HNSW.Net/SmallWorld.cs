@@ -28,14 +28,17 @@ namespace HNSW.Net
         /// The hierarchical small world graph instance.
         /// </summary>
         private Graph<TItem, TDistance> Graph;
+        private IProvideRandomValues Generator;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
         /// </summary>
         /// <param name="distance">The distance function to use in the small world.</param>
-        public SmallWorld(Func<TItem, TItem, TDistance> distance)
+        public SmallWorld(Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Parameters parameters)
         {
             Distance = distance;
+            Graph = new Graph<TItem, TDistance>(Distance, parameters);
+            Generator = generator;
         }
 
         /// <summary>
@@ -62,11 +65,9 @@ namespace HNSW.Net
         /// <param name="items">The items to connect into the graph.</param>
         /// <param name="generator">The random number generator for building graph.</param>
         /// <param name="parameters">Parameters of the algorithm.</param>
-        public void BuildGraph(IReadOnlyList<TItem> items, IProvideRandomValues generator, Parameters parameters)
+        public void AddItems(IReadOnlyList<TItem> items)
         {
-            var graph = new Graph<TItem, TDistance>(Distance, parameters);
-            graph.AddItems(items, generator);
-            Graph = graph;
+            Graph.AddItems(items, Generator);
         }
 
         /// <summary>
@@ -105,7 +106,7 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to assign to the graph's verticies.</param>
         /// <param name="bytes">The serialized parameters and edges.</param>
-        public void DeserializeGraph(IReadOnlyList<TItem> items, byte[] bytes)
+        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, byte[] bytes)
         {
             using (var stream = new MemoryStream(bytes))
             {
@@ -114,10 +115,11 @@ namespace HNSW.Net
                 var graphBytes = (byte[])formatter.Deserialize(stream);
 
                 var parameters = new Parameters { M = m };
-                var graph = new Graph<TItem, TDistance>(Distance, parameters);
-                graph.Deserialize(items, graphBytes);
 
-                Graph = graph;
+
+                var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
+                world.Graph.Deserialize(items, graphBytes);
+               return world;
             }
         }
 
@@ -214,6 +216,11 @@ namespace HNSW.Net
             /// Gets or sets the distance between the item and the knn search query.
             /// </summary>
             public TDistance Distance { get; set; }
+
+            public override string ToString()
+            {
+                return $"I:{Id}={Distance:n2} [{Item}]";
+            }
         }
     }
 }

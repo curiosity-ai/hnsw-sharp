@@ -68,11 +68,11 @@ namespace HNSW.Net
             internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
             {
                 Items.AddRange(items);
+                int id0 = Nodes.Count;
                 Nodes.Capacity += items.Count;
-
                 for (int id = 0; id < items.Count; ++id)
                 {
-                    Nodes.Add(Algorithm.NewNode(id, RandomLayer(generator, Parameters.LevelLambda)));
+                    Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
                 }
             }
 

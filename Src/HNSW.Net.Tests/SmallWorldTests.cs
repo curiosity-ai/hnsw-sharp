@@ -35,14 +35,14 @@ namespace HNSW.Net.Tests
         }
 
         /// <summary>
-        /// Basic test for knn search
+        /// Basic test for knn search - this test might fail sometimes, as the construction of the graph does not guarantee an exact answer
         /// </summary>
         [TestMethod]
         public void KNNSearchTest()
         {
             var parameters = new SmallWorld<float[], float>.Parameters();
-            var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-            graph.BuildGraph(vectors, new Random(42), parameters);
+            var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
+            graph.AddItems(vectors);
 
             for (int i = 0; i < vectors.Count; ++i)
             {
@@ -71,15 +71,14 @@ namespace HNSW.Net.Tests
                     LevelLambda = 1 / Math.Log(15),
                 };
 
-                var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-                graph.BuildGraph(vectors, new Random(42), parameters);
+                var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
+                graph.AddItems(vectors);
 
                 buffer = graph.SerializeGraph();
                 original = graph.Print();
             }
 
-            var copy = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-            copy.DeserializeGraph(vectors, buffer);
+            var copy = SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, buffer);
 
             Assert.AreEqual(original, copy.Print());
         }
