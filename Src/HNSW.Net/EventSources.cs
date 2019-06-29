@@ -10,9 +10,6 @@ namespace HNSW.Net
     using System.Diagnostics.Tracing;
     using System.Runtime.InteropServices;
 
-    /// <summary>
-    /// Groups event sources of the library.
-    /// </summary>
     public static class EventSources
     {
         /// <summary>

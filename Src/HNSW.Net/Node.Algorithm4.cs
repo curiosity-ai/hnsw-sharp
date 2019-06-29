@@ -83,7 +83,7 @@ namespace HNSW.Net
                     var candidateId = candidatesHeap.Pop();
                     var farestResultId = resultHeap.Buffer.FirstOrDefault();
 
-                    if (!resultHeap.Buffer.Any() || DistanceUtils.Lt(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
+                    if (!resultHeap.Buffer.Any() || DistanceUtils.LowerThan(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
                     {
                         resultHeap.Push(candidateId);
                     }

@@ -124,7 +124,7 @@ namespace HNSW.Net
                             GraphCore.Algorithm.Connect(GraphCore.Nodes[newNeighbourId], currentNode, layer);
 
                             // if distance from newNode to newNeighbour is better than to bestPeer => update bestPeer
-                            if (DistanceUtils.Lt(currentNodeTravelingCosts.From(newNeighbourId), currentNodeTravelingCosts.From(bestPeer.Id)))
+                            if (DistanceUtils.LowerThan(currentNodeTravelingCosts.From(newNeighbourId), currentNodeTravelingCosts.From(bestPeer.Id)))
                             {
                                 bestPeer = GraphCore.Nodes[newNeighbourId];
                             }
