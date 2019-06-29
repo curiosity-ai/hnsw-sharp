@@ -34,7 +34,7 @@ namespace HNSW.Net
         /// <summary>
         /// The entry point.
         /// </summary>
-        private Node EntryPoint;
+        private Node? EntryPoint;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Graph{TItem, TDistance}"/> class.
@@ -59,22 +59,23 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
-        internal void Build(IReadOnlyList<TItem> items, IProvideRandomValues generator)
+        internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
         {
-            if (!items?.Any() ?? false)
-            {
-                return;
-            }
+            if (items is null || !items.Any()) { return; }
 
-            var core = new Core(Distance, Parameters, items);
-            core.AllocateNodes(generator);
+            GraphCore = GraphCore ?? new Core(Distance, Parameters);
 
-            var entryPoint = core.Nodes[0];
-            var searcher = new Searcher(core);
-            Func<int, int, TDistance> nodeDistance = core.GetDistance;
-            var neighboursIdsBuffer = new List<int>(core.Algorithm.GetM(0) + 1);
+            int startIndex = GraphCore.Items.Count;
 
-            for (int nodeId = 1; nodeId < core.Nodes.Count; ++nodeId)
+            GraphCore.AddItems(items, generator);
+
+            var entryPoint = EntryPoint.HasValue ? EntryPoint.Value : GraphCore.Nodes[0];
+
+            var searcher = new Searcher(GraphCore);
+            Func<int, int, TDistance> nodeDistance = GraphCore.GetDistance;
+            var neighboursIdsBuffer = new List<int>(GraphCore.Algorithm.GetM(0) + 1);
+
+            for (int nodeId = startIndex; nodeId < GraphCore.Nodes.Count; ++nodeId)
             {
                 using (new ScopeLatencyTracker(GraphBuildEventSource.Instance?.GraphInsertNodeLatencyReporter))
                 {
@@ -101,12 +102,12 @@ namespace HNSW.Net
 
                     // zoom in and find the best peer on the same level as newNode
                     var bestPeer = entryPoint;
-                    var currentNode = core.Nodes[nodeId];
+                    var currentNode = GraphCore.Nodes[nodeId];
                     var currentNodeTravelingCosts = new TravelingCosts<int, TDistance>(nodeDistance, nodeId);
                     for (int layer = bestPeer.MaxLayer; layer > currentNode.MaxLayer; --layer)
                     {
                         searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1);
-                        bestPeer = core.Nodes[neighboursIdsBuffer[0]];
+                        bestPeer = GraphCore.Nodes[neighboursIdsBuffer[0]];
                         neighboursIdsBuffer.Clear();
                     }
 
@@ -114,18 +115,18 @@ namespace HNSW.Net
                     for (int layer = Math.Min(currentNode.MaxLayer, entryPoint.MaxLayer); layer >= 0; --layer)
                     {
                         searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, Parameters.ConstructionPruning);
-                        var bestNeighboursIds = core.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
+                        var bestNeighboursIds = GraphCore.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
 
                         for (int i = 0; i < bestNeighboursIds.Count; ++i)
                         {
                             int newNeighbourId = bestNeighboursIds[i];
-                            core.Algorithm.Connect(currentNode, core.Nodes[newNeighbourId], layer);
-                            core.Algorithm.Connect(core.Nodes[newNeighbourId], currentNode, layer);
+                            GraphCore.Algorithm.Connect(currentNode, GraphCore.Nodes[newNeighbourId], layer);
+                            GraphCore.Algorithm.Connect(GraphCore.Nodes[newNeighbourId], currentNode, layer);
 
                             // if distance from newNode to newNeighbour is better than to bestPeer => update bestPeer
                             if (DistanceUtils.Lt(currentNodeTravelingCosts.From(newNeighbourId), currentNodeTravelingCosts.From(bestPeer.Id)))
                             {
-                                bestPeer = core.Nodes[newNeighbourId];
+                                bestPeer = GraphCore.Nodes[newNeighbourId];
                             }
                         }
 
@@ -139,12 +140,11 @@ namespace HNSW.Net
                     }
 
                     // report distance cache hit rate
-                    GraphBuildEventSource.Instance?.CoreGetDistanceCacheHitRateReporter?.Invoke(core.DistanceCacheHitRate);
+                    GraphBuildEventSource.Instance?.CoreGetDistanceCacheHitRateReporter?.Invoke(GraphCore.DistanceCacheHitRate);
                 }
             }
 
             // construction is done
-            GraphCore = core;
             EntryPoint = entryPoint;
         }
 
@@ -167,13 +167,13 @@ namespace HNSW.Net
                     return Distance(destination, GraphCore.Items[nodeId]);
                 }
 
-                var bestPeer = EntryPoint;
+                var bestPeer = EntryPoint.Value;
                 var searcher = new Searcher(GraphCore);
                 var destiantionTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
                 var resultIds = new List<int>(k + 1);
 
                 int visitedNodesCount = 0;
-                for (int layer = EntryPoint.MaxLayer; layer > 0; --layer)
+                for (int layer = EntryPoint.Value.MaxLayer; layer > 0; --layer)
                 {
                     visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1);
                     bestPeer = GraphCore.Nodes[resultIds[0]];
@@ -219,8 +219,8 @@ namespace HNSW.Net
                 var formatter = new BinaryFormatter();
 
                 var coreBytes = (byte[])formatter.Deserialize(stream);
-                var core = new Core(Distance, Parameters, items);
-                core.Deserialize(coreBytes);
+                var core = new Core(Distance, Parameters);
+                core.Deserialize(items, coreBytes);
 
                 EntryPoint = (Node)formatter.Deserialize(stream);
                 GraphCore = core;
@@ -234,10 +234,10 @@ namespace HNSW.Net
         internal string Print()
         {
             var buffer = new StringBuilder();
-            for (int layer = EntryPoint.MaxLayer; layer >= 0; --layer)
+            for (int layer = EntryPoint.Value.MaxLayer; layer >= 0; --layer)
             {
                 buffer.AppendLine($"[LEVEL {layer}]");
-                BFS(GraphCore, EntryPoint, layer, (node) =>
+                BFS(GraphCore, EntryPoint.Value, layer, (node) =>
                 {
                     var neighbours = string.Join(", ", node[layer]);
                     buffer.AppendLine($"({node.Id}) -> {{{neighbours}}}");

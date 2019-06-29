@@ -9,9 +9,6 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Linq;
 
-    /// <content>
-    /// The part with the auxiliary graph tools.
-    /// </content>
     internal partial class Graph<TItem, TDistance>
     {
         /// <summary>
@@ -41,49 +38,30 @@ namespace HNSW.Net
             }
         }
 
-        /// <summary>
-        /// Bitset for tracking visited nodes.
-        /// </summary>
         internal class VisitedBitSet
         {
-            private int[] buffer;
+            private int[] Buffer;
 
-            /// <summary>
-            /// Initializes a new instance of the <see cref="VisitedBitSet"/> class.
-            /// </summary>
-            /// <param name="nodesCount">The number of nodes to track in the set.</param>
             internal VisitedBitSet(int nodesCount)
             {
-                buffer = new int[(nodesCount >> 5) + 1];
+                Buffer = new int[(nodesCount >> 5) + 1];
             }
 
-            /// <summary>
-            /// Checks whether the node is already in the set.
-            /// </summary>
-            /// <param name="nodeId">The identifier of the node.</param>
-            /// <returns>True if the node is in the set.</returns>
             internal bool Contains(int nodeId)
             {
-                int carrier = buffer[nodeId >> 5];
+                int carrier = Buffer[nodeId >> 5];
                 return ((1 << (nodeId & 31)) & carrier) != 0;
             }
 
-            /// <summary>
-            /// Adds the node id to the set.
-            /// </summary>
-            /// <param name="nodeId">The node id to add.</param>
             internal void Add(int nodeId)
             {
                 int mask = 1 << (nodeId & 31);
-                buffer[nodeId >> 5] |= mask;
+                Buffer[nodeId >> 5] |= mask;
             }
 
-            /// <summary>
-            /// Clears the set.
-            /// </summary>
             internal void Clear()
             {
-                Array.Clear(buffer, 0, buffer.Length);
+                Array.Clear(Buffer, 0, Buffer.Length);
             }
         }
     }

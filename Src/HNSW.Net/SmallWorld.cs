@@ -65,7 +65,7 @@ namespace HNSW.Net
         public void BuildGraph(IReadOnlyList<TItem> items, IProvideRandomValues generator, Parameters parameters)
         {
             var graph = new Graph<TItem, TDistance>(Distance, parameters);
-            graph.Build(items, generator);
+            graph.AddItems(items, generator);
             Graph = graph;
         }
 

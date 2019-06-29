@@ -25,8 +25,7 @@ namespace HNSW.Net
         /// Initializes a new instance of the <see cref="BinaryHeap{T}"/> struct.
         /// </summary>
         /// <param name="buffer">The buffer to store heap items.</param>
-        internal BinaryHeap(IList<T> buffer)
-            : this(buffer, Comparer<T>.Default)
+        internal BinaryHeap(IList<T> buffer) : this(buffer, Comparer<T>.Default)
         {
         }
 
@@ -50,30 +49,16 @@ namespace HNSW.Net
             }
         }
 
-        /// <summary>
-        /// Gets the heap comparer.
-        /// </summary>
         internal IComparer<T> Comparer => comparer;
 
-        /// <summary>
-        /// Gets the buffer of the heap.
-        /// </summary>
         internal IList<T> Buffer => buffer;
 
-        /// <summary>
-        /// Pushes item to the heap.
-        /// </summary>
-        /// <param name="item">The item to push.</param>
         internal void Push(T item)
         {
             buffer.Add(item);
             SiftUp(buffer.Count - 1);
         }
 
-        /// <summary>
-        /// Pops the item from the heap.
-        /// </summary>
-        /// <returns>The popped item.</returns>
         internal T Pop()
         {
             if (buffer.Count > 0)
@@ -137,11 +122,6 @@ namespace HNSW.Net
             }
         }
 
-        /// <summary>
-        /// Swaps items with the specified indices.
-        /// </summary>
-        /// <param name="i">The first index.</param>
-        /// <param name="j">The second index.</param>
         private void Swap(int i, int j)
         {
             var temp = buffer[i];

@@ -12,56 +12,47 @@ namespace HNSW.Net
 
     using static HNSW.Net.EventSources;
 
-    /// <content>
-    /// The implementation of graph core structure.
-    /// </content>
     internal partial class Graph<TItem, TDistance>
     {
-        /// <summary>
-        /// The graph core.
-        /// </summary>
         internal class Core
         {
-            /// <summary>
-            /// The original distance function.
-            /// </summary>
-            private readonly Func<TItem, TItem, TDistance> distance;
+            private readonly Func<TItem, TItem, TDistance> Distance;
 
-            /// <summary>
-            /// The distance cache.
-            /// </summary>
             private readonly DistanceCache<TDistance> distanceCache;
 
-            /// <summary>
-            /// The number of times cache was hit.
-            /// </summary>
-            private long distanceCacheHitCount;
+            private long DistanceCacheHitCount;
 
-            /// <summary>
-            /// The number of times distance calculation was requested.
-            /// </summary>
-            private long distanceCalculationsCount;
+            private long DistanceCalculationsCount;
 
-            /// <summary>
-            /// Initializes a new instance of the <see cref="Core"/> class.
-            /// </summary>
-            /// <param name="distance">The distance function in the items space.</param>
-            /// <param name="parameters">The parameters of the world.</param>
-            /// <param name="items">The original items.</param>
-            internal Core(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters, IReadOnlyList<TItem> items)
+            internal List<Node> Nodes { get; private set; }
+
+            internal List<TItem> Items { get; private set; }
+
+            internal Node.Algorithm<TItem, TDistance> Algorithm { get; private set; }
+
+            internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; private set; }
+
+            internal float DistanceCacheHitRate => (float)DistanceCacheHitCount / DistanceCalculationsCount;
+
+            internal Core(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters)
             {
-                this.distance = distance;
+                Distance = distance;
                 Parameters = parameters;
-                Items = items;
+                Nodes = new List<Node>();
+                Items = new List<TItem>();
 
                 switch (Parameters.NeighbourHeuristic)
                 {
                     case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectSimple:
+                    {
                         Algorithm = new Node.Algorithm3<TItem, TDistance>(this);
                         break;
+                    }
                     case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectHeuristic:
+                    {
                         Algorithm = new Node.Algorithm4<TItem, TDistance>(this);
                         break;
+                    }
                 }
 
                 if (Parameters.EnableDistanceCacheForConstruction)
@@ -69,54 +60,22 @@ namespace HNSW.Net
                     distanceCache = new DistanceCache<TDistance>(Items.Count);
                 }
 
-                distanceCacheHitCount = 0;
-                distanceCalculationsCount = 0;
+                DistanceCacheHitCount = 0;
+                DistanceCalculationsCount = 0;
             }
 
-            /// <summary>
-            /// Gets the graph nodes corresponding to <see cref="Items"/>
-            /// </summary>
-            internal IReadOnlyList<Node> Nodes { get; private set; }
 
-            /// <summary>
-            /// Gets the items associated with the <see cref="Nodes"/>
-            /// </summary>
-            internal IReadOnlyList<TItem> Items { get; private set; }
-
-            /// <summary>
-            /// Gets the algorithm for allocating and managing nodes capacity.
-            /// </summary>
-            internal Node.Algorithm<TItem, TDistance> Algorithm { get; private set; }
-
-            /// <summary>
-            /// Gets parameters of the small world.
-            /// </summary>
-            internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; private set; }
-
-            /// <summary>
-            /// Gets distance cache hit rate.
-            /// </summary>
-            internal float DistanceCacheHitRate => (float)distanceCacheHitCount / distanceCalculationsCount;
-
-            /// <summary>
-            /// Initializes node array for building graph.
-            /// </summary>
-            /// <param name="generator">The random number generator to assign layers.</param>
-            internal void AllocateNodes(IProvideRandomValues generator)
+            internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
             {
-                var nodes = new List<Node>(Items.Count);
-                for (int id = 0; id < Items.Count; ++id)
-                {
-                    nodes.Add(Algorithm.NewNode(id, RandomLayer(generator, Parameters.LevelLambda)));
-                }
+                Items.AddRange(items);
+                Nodes.Capacity += items.Count;
 
-                Nodes = nodes;
+                for (int id = 0; id < items.Count; ++id)
+                {
+                    Nodes.Add(Algorithm.NewNode(id, RandomLayer(generator, Parameters.LevelLambda)));
+                }
             }
 
-            /// <summary>
-            /// Serializes nodes of the core.
-            /// </summary>
-            /// <returns>Bytes representing nodes.</returns>
             internal byte[] Serialize()
             {
                 using (var stream = new MemoryStream())
@@ -127,48 +86,33 @@ namespace HNSW.Net
                 }
             }
 
-            /// <summary>
-            /// Deserializes the graph core from byte array.
-            /// </summary>
-            /// <param name="bytes">The byte array representing graph core.</param>
-            internal void Deserialize(byte[] bytes)
+            internal void Deserialize(IReadOnlyList<TItem> items, byte[] bytes)
             {
                 using (var stream = new MemoryStream(bytes))
                 {
                     var formatter = new BinaryFormatter();
                     Nodes = (List<Node>)formatter.Deserialize(stream);
                 }
+                Items.AddRange(items);
             }
 
-            /// <summary>
-            /// Gets the distance between 2 items.
-            /// </summary>
-            /// <param name="fromId">The identifier of the "from" item.</param>
-            /// <param name="toId">The identifier of the "to" item.</param>
-            /// <returns>The distance between items.</returns>
             internal TDistance GetDistance(int fromId, int toId)
             {
-                distanceCalculationsCount++;
+                DistanceCalculationsCount++;
 
                 TDistance result;
                 if (distanceCache != null && distanceCache.TryGetValue(fromId, toId, out result))
                 {
-                    distanceCacheHitCount++;
+                    DistanceCacheHitCount++;
                     return result;
                 }
 
-                result = distance(Items[fromId], Items[toId]);
+                result = Distance(Items[fromId], Items[toId]);
                 distanceCache?.SetValue(fromId, toId, result);
 
                 return result;
             }
 
-            /// <summary>
-            /// Gets the random layer.
-            /// </summary>
-            /// <param name="generator">The random numbers generator.</param>
-            /// <param name="lambda">Poisson lambda.</param>
-            /// <returns>The layer value.</returns>
             private static int RandomLayer(IProvideRandomValues generator, double lambda)
             {
                 var r = -Math.Log(generator.NextFloat()) * lambda;
