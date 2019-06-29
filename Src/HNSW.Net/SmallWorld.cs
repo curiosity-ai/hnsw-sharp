@@ -62,7 +62,7 @@ namespace HNSW.Net
         /// <param name="items">The items to connect into the graph.</param>
         /// <param name="generator">The random number generator for building graph.</param>
         /// <param name="parameters">Parameters of the algorithm.</param>
-        public void BuildGraph(IReadOnlyList<TItem> items, Random generator, Parameters parameters)
+        public void BuildGraph(IReadOnlyList<TItem> items, IProvideRandomValues generator, Parameters parameters)
         {
             var graph = new Graph<TItem, TDistance>(Distance, parameters);
             graph.Build(items, generator);

@@ -59,7 +59,7 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
-        internal void Build(IReadOnlyList<TItem> items, Random generator)
+        internal void Build(IReadOnlyList<TItem> items, IProvideRandomValues generator)
         {
             if (!items?.Any() ?? false)
             {

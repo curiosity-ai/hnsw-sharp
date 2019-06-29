@@ -57,7 +57,7 @@ namespace HNSW.Net.Demo
             using (var listener = new MetricsEventListener(EventSources.GraphBuildEventSource.Instance))
             {
                 clock = Stopwatch.StartNew();
-                world.BuildGraph(sampleVectors, new Random(42), parameters);
+                world.BuildGraph(sampleVectors, DefaultRandomGenerator.Instance, parameters);
                 Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
             }
 

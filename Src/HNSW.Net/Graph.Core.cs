@@ -102,7 +102,7 @@ namespace HNSW.Net
             /// Initializes node array for building graph.
             /// </summary>
             /// <param name="generator">The random number generator to assign layers.</param>
-            internal void AllocateNodes(Random generator)
+            internal void AllocateNodes(IProvideRandomValues generator)
             {
                 var nodes = new List<Node>(Items.Count);
                 for (int id = 0; id < Items.Count; ++id)
@@ -169,9 +169,9 @@ namespace HNSW.Net
             /// <param name="generator">The random numbers generator.</param>
             /// <param name="lambda">Poisson lambda.</param>
             /// <returns>The layer value.</returns>
-            private static int RandomLayer(Random generator, double lambda)
+            private static int RandomLayer(IProvideRandomValues generator, double lambda)
             {
-                var r = -Math.Log(generator.NextDouble()) * lambda;
+                var r = -Math.Log(generator.NextFloat()) * lambda;
                 return (int)r;
             }
         }
