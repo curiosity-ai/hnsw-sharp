@@ -108,13 +108,8 @@ namespace HNSW.Net.Demo
             for (int i = 0; i < vectorsCount; i++)
             {
                 var vector = new float[vectorSize];
-                for (int j = 0; j < vectorSize; j++)
-                {
-                    vector[j] = (float)random.NextDouble();
-                }
-
+                DefaultRandomGenerator.Instance.NextFloats(vector);
                 Normalize(ref vector);
-
                 vectors.Add(vector);
             }
 
