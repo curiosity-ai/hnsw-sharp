@@ -103,7 +103,6 @@ namespace HNSW.Net.Demo
 
         private static List<float[]> RandomVectors(int vectorSize, int vectorsCount)
         {
-            var random = new Random(42);
             var vectors = new List<float[]>();
 
             for (int i = 0; i < vectorsCount; i++)
