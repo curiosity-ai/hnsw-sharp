@@ -1,34 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <Authors>Microsoft</Authors>
-    <Company>Microsoft</Company>
-    <Title>HNSW.Net</Title>
-    <Description>C# library for approximate nearest neighbors search using Hierarchical Navigable Small World graphs</Description>
-    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <AssemblyName>HNSW.Net</AssemblyName>
-    <RootNamespace>HNSW.Net</RootNamespace>
-    <IsPackable>true</IsPackable>
-  </PropertyGroup>
 
   <PropertyGroup>
-    <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
-    <DocumentationFile>bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
-    <LangVersion>7.2</LangVersion>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Platforms>AnyCPU</Platforms>
   </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <DebugSymbols>true</DebugSymbols>
-    <DefineConstants>CODE_ANALYSIS;DEBUG;TRACE</DefineConstants>
-    <DebugType>full</DebugType>
-  </PropertyGroup>
-  
-  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <DebugSymbols>true</DebugSymbols>
-    <DefineConstants>CODE_ANALYSIS;TRACE</DefineConstants>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>    
-  </PropertyGroup>
+ 
   
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.5.2" />

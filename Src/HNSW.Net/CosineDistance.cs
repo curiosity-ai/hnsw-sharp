@@ -8,6 +8,7 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
     using System.Numerics;
+    using System.Runtime.CompilerServices;
 
     /// <summary>
     /// Calculates cosine similarity.
@@ -31,9 +32,9 @@ namespace HNSW.Net
         /// <param name="u">Left vector.</param>
         /// <param name="v">Right vector.</param>
         /// <returns>Cosine distance between u and v.</returns>
-        public static float NonOptimized(IReadOnlyList<float> u, IReadOnlyList<float> v)
-        {
-            if (u.Count != v.Count)
+        public static float NonOptimized(float[] u, float[] v)
+        {   
+            if (u.Length != v.Length)
             {
                 throw new ArgumentException("Vectors have non-matching dimensions");
             }
@@ -41,7 +42,7 @@ namespace HNSW.Net
             float dot = 0.0f;
             float nru = 0.0f;
             float nrv = 0.0f;
-            for (int i = 0; i < u.Count; ++i)
+            for (int i = 0; i < u.Length; ++i)
             {
                 dot += u[i] * v[i];
                 nru += u[i] * u[i];
@@ -58,15 +59,15 @@ namespace HNSW.Net
         /// <param name="u">Left vector.</param>
         /// <param name="v">Right vector.</param>
         /// <returns>Cosine distance between u and v.</returns>
-        public static float ForUnits(IReadOnlyList<float> u, IReadOnlyList<float> v)
+        public static float ForUnits(float[] u, float[] v)
         {
-            if (u.Count != v.Count)
+            if (u.Length!= v.Length)
             {
                 throw new ArgumentException("Vectors have non-matching dimensions");
             }
 
             float dot = 0;
-            for (int i = 0; i < u.Count; ++i)
+            for (int i = 0; i < u.Length; ++i)
             {
                 dot += u[i] * v[i];
             }
@@ -126,33 +127,57 @@ namespace HNSW.Net
         /// <returns>Cosine distance between u and v.</returns>
         public static float SIMDForUnits(float[] u, float[] v)
         {
-            if (!Vector.IsHardwareAccelerated)
+            return 1f - DotProduct(ref u, ref v);
+        }
+
+        private static readonly int _vs1 = Vector<float>.Count;
+        private static readonly int _vs2 = 2 * Vector<float>.Count;
+        private static readonly int _vs3 = 3 * Vector<float>.Count;
+        private static readonly int _vs4 = 4 * Vector<float>.Count;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static float DotProduct(ref float[] lhs, ref float[] rhs)
+        {
+            float result = 0f;
+
+            var count = lhs.Length;
+            var offset = 0;
+
+            while (count >= _vs4)
             {
-                throw new NotSupportedException($"SIMD version of {nameof(CosineDistance)} is not supported");
+                result += Vector.Dot(new Vector<float>(lhs, offset), new Vector<float>(rhs, offset));
+                result += Vector.Dot(new Vector<float>(lhs, offset + _vs1), new Vector<float>(rhs, offset + _vs1));
+                result += Vector.Dot(new Vector<float>(lhs, offset + _vs2), new Vector<float>(rhs, offset + _vs2));
+                result += Vector.Dot(new Vector<float>(lhs, offset + _vs3), new Vector<float>(rhs, offset + _vs3));
+                if (count == _vs4) return result;
+                count -= _vs4;
+                offset += _vs4;
             }
 
-            if (u.Length != v.Length)
+            if (count >= _vs2)
             {
-                throw new ArgumentException("Vectors have non-matching dimensions");
+                result += Vector.Dot(new Vector<float>(lhs, offset), new Vector<float>(rhs, offset));
+                result += Vector.Dot(new Vector<float>(lhs, offset + _vs1), new Vector<float>(rhs, offset + _vs1));
+                if (count == _vs2) return result;
+                count -= _vs2;
+                offset += _vs2;
             }
-
-            float dot = 0;
-            int step = Vector<float>.Count;
-
-            int i, to = u.Length - step;
-            for (i = 0; i <= to; i += step)
+            if (count >= _vs1)
             {
-                var ui = new Vector<float>(u, i);
-                var vi = new Vector<float>(v, i);
-                dot += Vector.Dot(ui, vi);
+                result += Vector.Dot(new Vector<float>(lhs, offset), new Vector<float>(rhs, offset));
+                if (count == _vs1) return result;
+                count -= _vs1;
+                offset += _vs1;
             }
-
-            for (; i < u.Length; ++i)
+            if (count > 0)
             {
-                dot += u[i] * v[i];
+                while (count > 0)
+                {
+                    result += lhs[offset] * rhs[offset];
+                    offset++; count--;
+                }
             }
-
-            return 1 - dot;
+            return result;
         }
     }
 }

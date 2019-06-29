@@ -1,35 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <Authors>Microsoft</Authors>
-    <Company>Microsoft</Company>
-    <Title>HNSW.Net.Tests</Title>
-    <Description>C# library for approximate nearest neighbors search using Hierarchical Navigable Small World graphs</Description>
-    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <AssemblyName>HNSW.Net.Tests</AssemblyName>
-    <RootNamespace>HNSW.Net.Tests</RootNamespace>
-    <IsTestProject>true</IsTestProject>
-  </PropertyGroup>
 
   <PropertyGroup>
-    <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
-    <DocumentationFile>bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
-    <LangVersion>7.2</LangVersion>
+    <TargetFramework>netcoreapp2.2</TargetFramework>
   </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <DebugSymbols>true</DebugSymbols>
-    <DefineConstants>CODE_ANALYSIS;DEBUG;TRACE</DefineConstants>
-    <DebugType>full</DebugType>
-  </PropertyGroup>
-  
-  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <DebugSymbols>true</DebugSymbols>
-    <DefineConstants>CODE_ANALYSIS;TRACE</DefineConstants>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>    
-  </PropertyGroup>
-  
   <ItemGroup>
     <PackageReference Include="MSTest.TestAdapter" Version="1.4.0" />
     <PackageReference Include="MSTest.TestFramework" Version="1.4.0" />
