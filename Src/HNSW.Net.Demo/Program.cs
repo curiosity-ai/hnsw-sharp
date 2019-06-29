@@ -8,7 +8,6 @@ namespace HNSW.Net.Demo
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
-    using System.Diagnostics.Tracing;
     using System.IO;
     using System.Linq;
     using System.Numerics;
@@ -21,18 +20,15 @@ namespace HNSW.Net.Demo
     /// <summary>
     /// The demo program.
     /// </summary>
-    public static class Program
+    public static partial class Program
     {
-        private const int SampleSize = 1_000;
-        private const int SampleIncrSize = 50;
+        private const int SampleSize = 10_000;
+        private const int SampleIncrSize = 500;
         private const int TestSize = 10 * SampleSize;
-        private const int Dimensionality = 16;
+        private const int Dimensionality = 128;
         private const string VectorsPathSuffix = "vectors.hnsw";
         private const string GraphPathSuffix = "graph.hnsw";
 
-        /// <summary>
-        /// Entry point.
-        /// </summary>
         public static void Main()
         {
             BuildAndSave("random");
@@ -61,7 +57,7 @@ namespace HNSW.Net.Demo
                 for(int i = 0; i < (SampleSize / SampleIncrSize); i++)
                 {
                     world.AddItems(sampleVectors.Skip(i * SampleIncrSize).Take(SampleIncrSize).ToArray());
-                    Console.WriteLine($"\nAt {i} of {SampleSize / SampleIncrSize}  Elapsed: {clock.ElapsedMilliseconds} ms.\n");
+                    Console.WriteLine($"\nAt {i+1} of {SampleSize / SampleIncrSize}  Elapsed: {clock.ElapsedMilliseconds} ms.\n");
                 }
                 Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
             }
@@ -119,34 +115,6 @@ namespace HNSW.Net.Demo
             }
 
             return vectors;
-        }
-
-        private class MetricsEventListener : EventListener
-        {
-            private readonly EventSource eventSource;
-
-            public MetricsEventListener(EventSource eventSource)
-            {
-                this.eventSource = eventSource;
-                EnableEvents(this.eventSource, EventLevel.LogAlways, EventKeywords.All, new Dictionary<string, string> { { "EventCounterIntervalSec", "1" } });
-            }
-
-            public override void Dispose()
-            {
-                DisableEvents(eventSource);
-                base.Dispose();
-            }
-
-            protected override void OnEventWritten(EventWrittenEventArgs eventData)
-            {
-                var counterData = eventData.Payload?.FirstOrDefault() as IDictionary<string, object>;
-                if (counterData?.Count == 0)
-                {
-                    return;
-                }
-
-                Console.WriteLine($"[{counterData["Name"]}]: Avg={counterData["Mean"]}; SD={counterData["StandardDeviation"]}; Count={counterData["Count"]}");
-            }
         }
     }
 }
