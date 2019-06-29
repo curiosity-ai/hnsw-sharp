@@ -12,21 +12,14 @@ namespace HNSW.Net
     using System.Runtime.Serialization.Formatters.Binary;
 
     /// <summary>
-    /// The Hierarchical Navigable Small World Graphs.
-    /// https://arxiv.org/abs/1603.09320
+    /// The Hierarchical Navigable Small World Graphs. https://arxiv.org/abs/1603.09320
     /// </summary>
     /// <typeparam name="TItem">The type of items to connect into small world.</typeparam>
     /// <typeparam name="TDistance">The type of distance between items (expect any numeric type: float, double, decimal, int, ...).</typeparam>
     public partial class SmallWorld<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
     {
-        /// <summary>
-        /// The distance function in the items space.
-        /// </summary>
         private readonly Func<TItem, TItem, TDistance> Distance;
 
-        /// <summary>
-        /// The hierarchical small world graph instance.
-        /// </summary>
         private Graph<TItem, TDistance> Graph;
         private IProvideRandomValues Generator;
 
@@ -34,6 +27,8 @@ namespace HNSW.Net
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
         /// </summary>
         /// <param name="distance">The distance function to use in the small world.</param>
+        /// <param name="generator">The random number generator for building graph.</param>
+        /// <param name="parameters">Parameters of the algorithm.</param>
         public SmallWorld(Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Parameters parameters)
         {
             Distance = distance;
@@ -47,14 +42,12 @@ namespace HNSW.Net
         public enum NeighbourSelectionHeuristic
         {
             /// <summary>
-            /// Marker for the Algorithm 3 (SELECT-NEIGHBORS-SIMPLE) from the article.
-            /// Implemented in <see cref="Node.Algorithm3{TItem, TDistance}"/>
+            /// Marker for the Algorithm 3 (SELECT-NEIGHBORS-SIMPLE) from the article. Implemented in <see cref="Node.Algorithm3{TItem, TDistance}"/>
             /// </summary>
             SelectSimple,
 
             /// <summary>
-            /// Marker for the Algorithm 4 (SELECT-NEIGHBORS-HEURISTIC) from the article.
-            /// Implemented in <see cref="Node.Algorithm4{TItem, TDistance}"/>
+            /// Marker for the Algorithm 4 (SELECT-NEIGHBORS-HEURISTIC) from the article. Implemented in <see cref="Node.Algorithm4{TItem, TDistance}"/>
             /// </summary>
             SelectHeuristic
         }
@@ -63,8 +56,7 @@ namespace HNSW.Net
         /// Builds hnsw graph from the items.
         /// </summary>
         /// <param name="items">The items to connect into the graph.</param>
-        /// <param name="generator">The random number generator for building graph.</param>
-        /// <param name="parameters">Parameters of the algorithm.</param>
+
         public void AddItems(IReadOnlyList<TItem> items)
         {
             Graph.AddItems(items, Generator);
@@ -124,8 +116,7 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Prints edges of the graph.
-        /// Mostly for debug and test purposes.
+        /// Prints edges of the graph. Mostly for debug and test purposes.
         /// </summary>
         /// <returns>String representation of the graph's edges.</returns>
         public string Print()
@@ -133,15 +124,8 @@ namespace HNSW.Net
             return Graph.Print();
         }
 
-        /// <summary>
-        /// Parameters of the algorithm.
-        /// </summary>
-        [SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "By Design")]
         public class Parameters
         {
-            /// <summary>
-            /// Initializes a new instance of the <see cref="Parameters"/> class.
-            /// </summary>
             public Parameters()
             {
                 M = 10;
@@ -161,9 +145,7 @@ namespace HNSW.Net
             public int M { get; set; }
 
             /// <summary>
-            /// Gets or sets the max level decay parameter.
-            /// https://en.wikipedia.org/wiki/Exponential_distribution
-            /// See 'mL' parameter in the HNSW article.
+            /// Gets or sets the max level decay parameter. https://en.wikipedia.org/wiki/Exponential_distribution See 'mL' parameter in the HNSW article.
             /// </summary>
             public double LevelLambda { get; set; }
 
@@ -173,20 +155,17 @@ namespace HNSW.Net
             public NeighbourSelectionHeuristic NeighbourHeuristic { get; set; }
 
             /// <summary>
-            /// Gets or sets the number of candidates to consider as neighbours for a given node at the graph construction phase.
-            /// See 'efConstruction' parameter in the article.
+            /// Gets or sets the number of candidates to consider as neighbours for a given node at the graph construction phase. See 'efConstruction' parameter in the article.
             /// </summary>
             public int ConstructionPruning { get; set; }
 
             /// <summary>
-            /// Gets or sets a value indicating whether to expand candidates if <see cref="NeighbourSelectionHeuristic.SelectHeuristic"/> is used.
-            /// See 'extendCandidates' parameter in the article.
+            /// Gets or sets a value indicating whether to expand candidates if <see cref="NeighbourSelectionHeuristic.SelectHeuristic"/> is used. See 'extendCandidates' parameter in the article.
             /// </summary>
             public bool ExpandBestSelection { get; set; }
 
             /// <summary>
-            /// Gets or sets a value indicating whether to keep pruned candidates if <see cref="NeighbourSelectionHeuristic.SelectHeuristic"/> is used.
-            /// See 'keepPrunedConnections' parameter in the article.
+            /// Gets or sets a value indicating whether to keep pruned candidates if <see cref="NeighbourSelectionHeuristic.SelectHeuristic"/> is used. See 'keepPrunedConnections' parameter in the article.
             /// </summary>
             public bool KeepPrunedConnections { get; set; }
 
@@ -196,26 +175,20 @@ namespace HNSW.Net
             public bool EnableDistanceCacheForConstruction { get; set; }
         }
 
-        /// <summary>
-        /// Representation of knn search result.
-        /// </summary>
-        [SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "By Design")]
         public class KNNSearchResult
         {
-            /// <summary>
-            /// Gets or sets the id of the item = rank of the item in source collection
-            /// </summary>
-            public int Id { get; set; }
+            internal KNNSearchResult(int id, TItem item, TDistance distance)
+            {
+                Id = id;
+                Item = item;
+                Distance = distance;
+            }
 
-            /// <summary>
-            /// Gets or sets the item itself.
-            /// </summary>
-            public TItem Item { get; set; }
+            public int Id { get; }
 
-            /// <summary>
-            /// Gets or sets the distance between the item and the knn search query.
-            /// </summary>
-            public TDistance Distance { get; set; }
+            public TItem Item { get; }
+
+            public TDistance Distance { get; }
 
             public override string ToString()
             {

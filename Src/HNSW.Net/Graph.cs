@@ -183,12 +183,7 @@ namespace HNSW.Net
                 visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k);
                 GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
 
-                return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult
-                {
-                    Id = id,
-                    Item = GraphCore.Items[id],
-                    Distance = RuntimeDistance(id, -1)
-                }).ToList();
+                return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult(id, GraphCore.Items[id],RuntimeDistance(id, -1))).ToList();
             }
         }
 

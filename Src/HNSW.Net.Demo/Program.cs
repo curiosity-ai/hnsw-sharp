@@ -17,9 +17,6 @@ namespace HNSW.Net.Demo
 
     using Parameters = SmallWorld<float[], float>.Parameters;
 
-    /// <summary>
-    /// The demo program.
-    /// </summary>
     public static partial class Program
     {
         private const int SampleSize = 10_000;
@@ -37,17 +34,11 @@ namespace HNSW.Net.Demo
 
         private static void BuildAndSave(string pathPrefix)
         {
-            Stopwatch clock;
-            List<float[]> sampleVectors;
-
-            var parameters = new Parameters();
-            parameters.EnableDistanceCacheForConstruction = false;
-
-            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, parameters);
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true});
 
             Console.Write($"Generating {SampleSize} sample vectos... ");
-            clock = Stopwatch.StartNew();
-            sampleVectors = RandomVectors(Dimensionality, SampleSize);
+            var clock = Stopwatch.StartNew();
+            var sampleVectors = RandomVectors(Dimensionality, SampleSize);
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
 
             Console.WriteLine("Building HNSW graph... ");
@@ -80,7 +71,7 @@ namespace HNSW.Net.Demo
             clock = Stopwatch.StartNew();
             BinaryFormatter formatter = new BinaryFormatter();
             var sampleVectors = (List<float[]>)formatter.Deserialize(new MemoryStream(File.ReadAllBytes($"{pathPrefix}.{VectorsPathSuffix}")));
-            var world = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, File.ReadAllBytes($"{pathPrefix}.{GraphPathSuffix}"));
+            var world = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, File.ReadAllBytes($"{pathPrefix}.{GraphPathSuffix}"));
 
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
 
