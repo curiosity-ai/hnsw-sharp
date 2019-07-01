@@ -9,7 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using System.Runtime.Serialization.Formatters.Binary;
+    using MessagePack;
     using System.Text;
 
     using static HNSW.Net.EventSources;
@@ -191,15 +191,10 @@ namespace HNSW.Net
         /// Serializes core of the graph.
         /// </summary>
         /// <returns>Bytes representing edges.</returns>
-        internal byte[] Serialize()
+        internal void Serialize(Stream stream)
         {
-            using (var stream = new MemoryStream())
-            {
-                var formatter = new BinaryFormatter();
-                formatter.Serialize(stream, GraphCore.Serialize());
-                formatter.Serialize(stream, EntryPoint);
-                return stream.ToArray();
-            }
+            GraphCore.Serialize(stream);
+            MessagePackSerializer.Serialize(stream, EntryPoint);
         }
 
         /// <summary>
@@ -207,19 +202,12 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The underlying items.</param>
         /// <param name="bytes">The serialized edges.</param>
-        internal void Deserialize(IReadOnlyList<TItem> items, byte[] bytes)
+        internal void Deserialize(IReadOnlyList<TItem> items, Stream stream)
         {
-            using (var stream = new MemoryStream(bytes))
-            {
-                var formatter = new BinaryFormatter();
-
-                var coreBytes = (byte[])formatter.Deserialize(stream);
-                var core = new Core(Distance, Parameters);
-                core.Deserialize(items, coreBytes);
-
-                EntryPoint = (Node)formatter.Deserialize(stream);
-                GraphCore = core;
-            }
+            var core = new Core(Distance, Parameters);
+            core.Deserialize(items, stream);
+            EntryPoint = MessagePackSerializer.Deserialize<Node>(stream);
+            GraphCore = core;
         }
 
         /// <summary>

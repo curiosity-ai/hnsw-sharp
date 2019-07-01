@@ -19,8 +19,8 @@ namespace HNSW.Net.Demo
 
     public static partial class Program
     {
-        private const int SampleSize = 10_000;
-        private const int SampleIncrSize = 500;
+        private const int SampleSize = 5_000;
+        private const int SampleIncrSize = 1000;
         private const int TestSize = 10 * SampleSize;
         private const int Dimensionality = 128;
         private const string VectorsPathSuffix = "vectors.hnsw";
@@ -34,7 +34,7 @@ namespace HNSW.Net.Demo
 
         private static void BuildAndSave(string pathPrefix)
         {
-            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true});
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = false});
 
             Console.Write($"Generating {SampleSize} sample vectos... ");
             var clock = Stopwatch.StartNew();
@@ -59,7 +59,12 @@ namespace HNSW.Net.Demo
             MemoryStream sampleVectorsStream = new MemoryStream();
             formatter.Serialize(sampleVectorsStream, sampleVectors);
             File.WriteAllBytes($"{pathPrefix}.{VectorsPathSuffix}", sampleVectorsStream.ToArray());
-            File.WriteAllBytes($"{pathPrefix}.{GraphPathSuffix}", world.SerializeGraph());
+
+            using (var f = File.OpenWrite($"{pathPrefix}.{GraphPathSuffix}"))
+            {
+                world.SerializeGraph(f);
+            }
+
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
         }
 
@@ -71,8 +76,11 @@ namespace HNSW.Net.Demo
             clock = Stopwatch.StartNew();
             BinaryFormatter formatter = new BinaryFormatter();
             var sampleVectors = (List<float[]>)formatter.Deserialize(new MemoryStream(File.ReadAllBytes($"{pathPrefix}.{VectorsPathSuffix}")));
-            var world = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, File.ReadAllBytes($"{pathPrefix}.{GraphPathSuffix}"));
-
+            SmallWorld<float[], float> world;
+            using (var f = File.OpenRead($"{pathPrefix}.{GraphPathSuffix}"))
+            {
+                world = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, f);
+            }
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
 
             Console.Write($"Generating {TestSize} test vectos... ");

@@ -8,7 +8,7 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
     using System.IO;
-    using System.Runtime.Serialization.Formatters.Binary;
+    using MessagePack;
 
     using static HNSW.Net.EventSources;
 
@@ -57,7 +57,7 @@ namespace HNSW.Net
 
                 if (Parameters.EnableDistanceCacheForConstruction)
                 {
-                    distanceCache = new DistanceCache<TDistance>(Items.Count);
+                    distanceCache = new DistanceCache<TDistance>(Parameters.CacheForConstructionSize);
                 }
 
                 DistanceCacheHitCount = 0;
@@ -76,23 +76,14 @@ namespace HNSW.Net
                 }
             }
 
-            internal byte[] Serialize()
+            internal void Serialize(Stream stream)
             {
-                using (var stream = new MemoryStream())
-                {
-                    var formatter = new BinaryFormatter();
-                    formatter.Serialize(stream, Nodes);
-                    return stream.ToArray();
-                }
+                MessagePackSerializer.Serialize(stream, Nodes);
             }
 
-            internal void Deserialize(IReadOnlyList<TItem> items, byte[] bytes)
+            internal void Deserialize(IReadOnlyList<TItem> items, Stream stream)
             {
-                using (var stream = new MemoryStream(bytes))
-                {
-                    var formatter = new BinaryFormatter();
-                    Nodes = (List<Node>)formatter.Deserialize(stream);
-                }
+                Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream);
                 Items.AddRange(items);
             }
 

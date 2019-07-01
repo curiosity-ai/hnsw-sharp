@@ -5,6 +5,7 @@
 
 namespace HNSW.Net
 {
+    using MessagePack;
     using System;
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
@@ -12,17 +13,18 @@ namespace HNSW.Net
     /// <summary>
     /// The implementation of the node in hnsw graph.
     /// </summary>
-    [SuppressMessage("Usage", "CA2235:Mark all non-serializable fields", Justification = "Analyzer bug: https://github.com/dotnet/roslyn-analyzers/issues/2156")]
-    [Serializable]
+    [MessagePackObject]
     internal partial struct Node
     {
-        private List<List<int>> Connections;
+        [Key(0)]
+        public List<List<int>> Connections;
 
-        public int Id;
+        [Key(1)] public int Id;
 
         /// <summary>
         /// Gets the max layer where the node is presented.
         /// </summary>
+        [IgnoreMember]
         public int MaxLayer
         {
             get
@@ -41,6 +43,10 @@ namespace HNSW.Net
             get
             {
                 return Connections[layer];
+            }
+            set
+            {
+                Connections[layer] = value;
             }
         }
 
@@ -126,7 +132,7 @@ namespace HNSW.Net
                 if (nodeLayer.Count > GetM(layer))
                 {
                     var travelingCosts = new TravelingCosts<int, TDistance>(NodeDistance, node.Id);
-                    node.Connections[layer] = SelectBestForConnecting(nodeLayer, travelingCosts, layer);
+                    node[layer] = SelectBestForConnecting(nodeLayer, travelingCosts, layer);
                 }
             }
         }

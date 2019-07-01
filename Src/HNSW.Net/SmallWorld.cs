@@ -9,7 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using System.IO;
-    using System.Runtime.Serialization.Formatters.Binary;
+    using MessagePack;
 
     /// <summary>
     /// The Hierarchical Navigable Small World Graphs. https://arxiv.org/abs/1603.09320
@@ -77,20 +77,14 @@ namespace HNSW.Net
         /// Serializes the graph WITHOUT linked items.
         /// </summary>
         /// <returns>Bytes representing the graph.</returns>
-        public byte[] SerializeGraph()
+        public void SerializeGraph(Stream stream)
         {
             if (Graph == null)
             {
                 throw new InvalidOperationException("The graph does not exist");
             }
-
-            using (var stream = new MemoryStream())
-            {
-                var formatter = new BinaryFormatter();
-                formatter.Serialize(stream, Graph.Parameters.M);
-                formatter.Serialize(stream, Graph.Serialize());
-                return stream.ToArray();
-            }
+            MessagePackBinary.WriteInt32(stream, Graph.Parameters.M);
+            Graph.Serialize(stream);
         }
 
         /// <summary>
@@ -98,21 +92,13 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to assign to the graph's verticies.</param>
         /// <param name="bytes">The serialized parameters and edges.</param>
-        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, byte[] bytes)
+        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream)
         {
-            using (var stream = new MemoryStream(bytes))
-            {
-                var formatter = new BinaryFormatter();
-                var m = (int)formatter.Deserialize(stream);
-                var graphBytes = (byte[])formatter.Deserialize(stream);
-
-                var parameters = new Parameters { M = m };
-
-
-                var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
-                world.Graph.Deserialize(items, graphBytes);
-               return world;
-            }
+            var m = (int)MessagePackBinary.ReadInt32(stream);
+            var parameters = new Parameters { M = m };
+            var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
+            world.Graph.Deserialize(items, stream);
+            return world;
         }
 
         /// <summary>
@@ -135,6 +121,7 @@ namespace HNSW.Net
                 ExpandBestSelection = false;
                 KeepPrunedConnections = false;
                 EnableDistanceCacheForConstruction = false;
+                CacheForConstructionSize = 100_000;
             }
 
             /// <summary>
@@ -173,6 +160,7 @@ namespace HNSW.Net
             /// Gets or sets a value indicating whether to cache calculated distances at graph construction time.
             /// </summary>
             public bool EnableDistanceCacheForConstruction { get; set; }
+            public int CacheForConstructionSize { get; set; }
         }
 
         public class KNNSearchResult
