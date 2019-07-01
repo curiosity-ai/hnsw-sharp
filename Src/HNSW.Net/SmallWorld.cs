@@ -9,6 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using System.IO;
+    using System.Threading;
     using MessagePack;
 
     /// <summary>
@@ -22,6 +23,8 @@ namespace HNSW.Net
 
         private Graph<TItem, TDistance> Graph;
         private IProvideRandomValues Generator;
+
+        private ReaderWriterLockSlim LockGraph = new ReaderWriterLockSlim();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
@@ -59,7 +62,15 @@ namespace HNSW.Net
 
         public void AddItems(IReadOnlyList<TItem> items)
         {
-            Graph.AddItems(items, Generator);
+            LockGraph.EnterWriteLock();
+            try
+            {
+               Graph.AddItems(items, Generator);
+            }
+            finally
+            {
+                LockGraph.ExitWriteLock();
+            }
         }
 
         /// <summary>
@@ -70,7 +81,15 @@ namespace HNSW.Net
         /// <returns>The list of found nearest neighbours.</returns>
         public IList<KNNSearchResult> KNNSearch(TItem item, int k)
         {
-            return Graph.KNearest(item, k);
+            LockGraph.EnterReadLock();
+            try
+            {
+                return Graph.KNearest(item, k);
+            }
+            finally
+            {
+                LockGraph.ExitReadLock();
+            }
         }
 
         /// <summary>
