@@ -102,8 +102,16 @@ namespace HNSW.Net
             {
                 throw new InvalidOperationException("The graph does not exist");
             }
-            MessagePackBinary.WriteInt32(stream, Graph.Parameters.M);
-            Graph.Serialize(stream);
+            LockGraph.EnterReadLock();
+            try
+            {
+                MessagePackBinary.WriteInt32(stream, Graph.Parameters.M);
+                Graph.Serialize(stream);
+            }
+            finally
+            {
+                LockGraph.ExitReadLock();
+            }
         }
 
         /// <summary>
