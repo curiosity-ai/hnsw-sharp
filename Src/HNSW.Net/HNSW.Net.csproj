@@ -4,6 +4,18 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <Platforms>AnyCPU</Platforms>
+    <Company>Curiosity GmbH</Company>
+    <PackageId>HNSW</PackageId>
+    <Authors>HNSW.Net</Authors>
+    <Product>HNSW</Product>
+    <Description>C# library for fast approximate nearest neighbours search using Hierarchical Navigable Small World graphs.
+Fork from original at https://github.com/microsoft/HNSW.Net, adds support for incremental build and MessagePack serialization.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) Microsoft Corporation</Copyright>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageProjectUrl>https://github.com/curiosity-ai/hnsw.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/curiosity-ai/hnsw.net</RepositoryUrl>
+    <PackageTags>kNN, ANN, approximate nearest neighbor</PackageTags>
   </PropertyGroup>
  
   

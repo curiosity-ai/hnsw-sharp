@@ -1,0 +1,41 @@
+variables:
+  project:  './Src/HNSW.Net/HNSW.Net.csproj'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+trigger:
+- master
+
+pool:
+  vmImage: 'VS2017-Win2016'
+
+steps:
+- task: NuGetToolInstaller@0
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'restore'
+    projects: '$(project)'
+    displayName: 'restore nuget'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'build'
+    projects: '$(project)'
+    arguments: '-c $(buildConfiguration) /p:Version=1.0.$(build.buildId) /p:LangVersion=latest'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'pack'
+    packagesToPack: '$(project)'
+    versioningScheme: 'off'
+    buildProperties: 'Version="1.0.$(build.buildId)";LangVersion="latest"'
+    nobuild: true
+
+- task: NuGetCommand@2
+  inputs:
+    command: 'push'
+    packagesToPush: '**/*.nupkg'
+    displayName: 'push nuget'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'nuget-curiosity'
