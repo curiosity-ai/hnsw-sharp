@@ -18,7 +18,7 @@ namespace HNSW.Net
         {
             private readonly Func<TItem, TItem, TDistance> Distance;
 
-            private readonly DistanceCache<TDistance> distanceCache;
+            private readonly DistanceCache<TDistance> DistanceCache;
 
             private long DistanceCacheHitCount;
 
@@ -57,7 +57,7 @@ namespace HNSW.Net
 
                 if (Parameters.EnableDistanceCacheForConstruction)
                 {
-                    distanceCache = new DistanceCache<TDistance>(Parameters.CacheForConstructionSize);
+                    DistanceCache = new DistanceCache<TDistance>();
                 }
 
                 DistanceCacheHitCount = 0;
@@ -68,6 +68,7 @@ namespace HNSW.Net
             internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
             {
                 Items.AddRange(items);
+                DistanceCache?.Resize(Items.Count);
                 int id0 = Nodes.Count;
                 Nodes.Capacity += items.Count;
                 for (int id = 0; id < items.Count; ++id)
@@ -92,14 +93,14 @@ namespace HNSW.Net
                 DistanceCalculationsCount++;
 
                 TDistance result;
-                if (distanceCache != null && distanceCache.TryGetValue(fromId, toId, out result))
+                if (DistanceCache != null && DistanceCache.TryGetValue(fromId, toId, out result))
                 {
                     DistanceCacheHitCount++;
                     return result;
                 }
 
                 result = Distance(Items[fromId], Items[toId]);
-                distanceCache?.SetValue(fromId, toId, result);
+                DistanceCache?.SetValue(fromId, toId, result);
 
                 return result;
             }

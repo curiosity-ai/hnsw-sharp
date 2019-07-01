@@ -3,6 +3,8 @@
 // Licensed under the MIT License.
 // </copyright>
 
+using System;
+
 namespace HNSW.Net
 {
     internal class DistanceCache<TDistance> where TDistance : struct
@@ -16,26 +18,33 @@ namespace HNSW.Net
         /// </summary>
         private const int MaxArrayLength = 1073741824; // 0x40000000;
 
-        /// <summary>
-        /// The cached values.
-        /// </summary>
-        private readonly TDistance[] values;
+        private TDistance[] values;
 
-        /// <summary>
-        /// The cached keys;
-        /// </summary>
-        private readonly long[] keys;
+        private long[] keys;
 
-        internal DistanceCache(int pointsCount)
+        internal DistanceCache()
+        {
+        }
+
+        internal void Resize(int pointsCount)
         {
             long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
             capacity = capacity < MaxArrayLength ? capacity : MaxArrayLength;
-
-            keys = new long[(int)capacity];
-            values = new TDistance[(int)capacity];
+            int i0 = 0;
+            if (keys is null)
+            {
+                keys = new long[(int)capacity];
+                values = new TDistance[(int)capacity];
+            }
+            else
+            {
+                i0 = keys.Length;
+                Array.Resize(ref keys,   (int)capacity);
+                Array.Resize(ref values, (int)capacity);
+            }
 
             // TODO: may be there is a better way to warm up cache and force OS to allocate pages
-            for (int i = 0; i < keys.Length; ++i)
+            for (int i = i0; i < keys.Length; ++i)
             {
                 keys[i] = -1;
                 values[i] = default;
