@@ -18,6 +18,7 @@ namespace HNSW.Net
     {
         internal IComparer<T> Comparer;
         internal List<T> Buffer;
+        internal bool Any => Buffer.Count > 0;
         internal BinaryHeap(List<T> buffer) : this(buffer, Comparer<T>.Default) { }
         internal BinaryHeap(List<T> buffer, IComparer<T> comparer)
         {

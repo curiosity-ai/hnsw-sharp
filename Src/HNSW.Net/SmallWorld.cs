@@ -48,12 +48,12 @@ namespace HNSW.Net
         public enum NeighbourSelectionHeuristic
         {
             /// <summary>
-            /// Marker for the Algorithm 3 (SELECT-NEIGHBORS-SIMPLE) from the article. Implemented in <see cref="Node.Algorithm3{TItem, TDistance}"/>
+            /// Marker for the Algorithm 3 (SELECT-NEIGHBORS-SIMPLE) from the article. Implemented in <see cref="Algorithms.Algorithm3{TItem, TDistance}"/>
             /// </summary>
             SelectSimple,
 
             /// <summary>
-            /// Marker for the Algorithm 4 (SELECT-NEIGHBORS-HEURISTIC) from the article. Implemented in <see cref="Node.Algorithm4{TItem, TDistance}"/>
+            /// Marker for the Algorithm 4 (SELECT-NEIGHBORS-HEURISTIC) from the article. Implemented in <see cref="Algorithms.Algorithm4{TItem, TDistance}"/>
             /// </summary>
             SelectHeuristic
         }
@@ -233,7 +233,7 @@ namespace HNSW.Net
 
             public override string ToString()
             {
-                return $"I:{Id}={Distance:n2} [{Item}]";
+                return $"I:{Id} Dist:{Distance:n2} [{Item}]";
             }
         }
     }

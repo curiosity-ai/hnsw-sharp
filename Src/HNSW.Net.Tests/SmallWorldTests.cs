@@ -44,14 +44,54 @@ namespace HNSW.Net.Tests
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
             graph.AddItems(vectors);
 
+            int bestWrong = 0;
+            float maxError = float.MinValue;
+
             for (int i = 0; i < vectors.Count; ++i)
             {
                 var result = graph.KNNSearch(vectors[i], 20);
                 var best = result.OrderBy(r => r.Distance).First();
                 Assert.AreEqual(20, result.Count);
-                Assert.AreEqual(i, best.Id);
-                Assert.AreEqual(0, best.Distance, FloatError);
+                if (best.Id != i)
+                {
+                    bestWrong++;
+                }
+                maxError = Math.Max(maxError, best.Distance);
             }
+            Assert.AreEqual(0, bestWrong);
+            Assert.AreEqual(0, maxError, FloatError);
+        }
+
+        /// <summary>
+        /// Basic test for knn search - this test might fail sometimes, as the construction of the graph does not guarantee an exact answer
+        /// </summary>
+        [DataTestMethod]
+        [DataRow(false,false)]
+        [DataRow(false,true)]
+        [DataRow(true, false)]
+        [DataRow(true, true)]
+        public void KNNSearchTestAlgorithm4(bool expandBestSelection, bool keepPrunedConnections )
+        {
+            var parameters = new SmallWorld<float[], float>.Parameters() { NeighbourHeuristic = SmallWorld<float[], float>.NeighbourSelectionHeuristic.SelectHeuristic, ExpandBestSelection = expandBestSelection, KeepPrunedConnections = keepPrunedConnections };
+            var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
+            graph.AddItems(vectors);
+
+            int bestWrong = 0;
+            float maxError = float.MinValue;
+
+            for (int i = 0; i < vectors.Count; ++i)
+            {
+                var result = graph.KNNSearch(vectors[i], 20);
+                var best = result.OrderBy(r => r.Distance).First();
+                Assert.AreEqual(20, result.Count);
+                if (best.Id != i)
+                {
+                    bestWrong++;
+                }
+                maxError = Math.Max(maxError, best.Distance);
+            }
+            Assert.AreEqual(0, bestWrong);
+            Assert.AreEqual(0, maxError, FloatError);
         }
 
         /// <summary>

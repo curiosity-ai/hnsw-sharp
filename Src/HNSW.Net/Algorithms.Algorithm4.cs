@@ -63,6 +63,7 @@ namespace HNSW.Net
                 if (GraphCore.Parameters.ExpandBestSelection)
                 {
                     var visited = new HashSet<int>(candidatesHeap.Buffer);
+                    var toAdd = new HashSet<int>();
                     foreach (var candidateId in candidatesHeap.Buffer)
                     {
                         var candidateNeighborsIDs = GraphCore.Nodes[candidateId][layer];
@@ -70,10 +71,14 @@ namespace HNSW.Net
                         {
                             if (!visited.Contains(candidateNeighbourId))
                             {
-                                candidatesHeap.Push(candidateNeighbourId);
+                                toAdd.Add(candidateNeighbourId);
                                 visited.Add(candidateNeighbourId);
                             }
                         }
+                    }
+                    foreach(var id in toAdd)
+                    {
+                        candidatesHeap.Push(id);
                     }
                 }
 
