@@ -28,7 +28,7 @@ namespace HNSW.Net
 
             internal List<TItem> Items { get; private set; }
 
-            internal Node.Algorithm<TItem, TDistance> Algorithm { get; private set; }
+            internal Algorithms.Algorithm<TItem, TDistance> Algorithm { get; private set; }
 
             internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; private set; }
 
@@ -45,12 +45,12 @@ namespace HNSW.Net
                 {
                     case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectSimple:
                     {
-                        Algorithm = new Node.Algorithm3<TItem, TDistance>(this);
+                        Algorithm = new Algorithms.Algorithm3<TItem, TDistance>(this);
                         break;
                     }
                     case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectHeuristic:
                     {
-                        Algorithm = new Node.Algorithm4<TItem, TDistance>(this);
+                        Algorithm = new Algorithms.Algorithm4<TItem, TDistance>(this);
                         break;
                     }
                 }
@@ -83,7 +83,7 @@ namespace HNSW.Net
 
             internal void Deserialize(IReadOnlyList<TItem> items, Stream stream)
             {
-                Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream);
+                Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream, readStrict:true);
                 Items.AddRange(items);
             }
 

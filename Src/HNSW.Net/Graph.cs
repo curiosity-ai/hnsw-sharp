@@ -206,7 +206,7 @@ namespace HNSW.Net
         {
             var core = new Core(Distance, Parameters);
             core.Deserialize(items, stream);
-            EntryPoint = MessagePackSerializer.Deserialize<Node>(stream);
+            EntryPoint = MessagePackSerializer.Deserialize<Node>(stream, readStrict: true);
             GraphCore = core;
         }
 

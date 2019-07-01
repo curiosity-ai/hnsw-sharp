@@ -8,7 +8,7 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
 
-    internal partial struct Node
+    internal partial class Algorithms
     {
         /// <summary>
         /// The implementation of the SELECT-NEIGHBORS-SIMPLE(q, C, M) algorithm.

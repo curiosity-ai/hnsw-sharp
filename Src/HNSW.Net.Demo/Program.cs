@@ -19,8 +19,8 @@ namespace HNSW.Net.Demo
 
     public static partial class Program
     {
-        private const int SampleSize = 5_000;
-        private const int SampleIncrSize = 1000;
+        private const int SampleSize = 5_00;
+        private const int SampleIncrSize = 100;
         private const int TestSize = 10 * SampleSize;
         private const int Dimensionality = 128;
         private const string VectorsPathSuffix = "vectors.hnsw";
@@ -60,7 +60,8 @@ namespace HNSW.Net.Demo
             formatter.Serialize(sampleVectorsStream, sampleVectors);
             File.WriteAllBytes($"{pathPrefix}.{VectorsPathSuffix}", sampleVectorsStream.ToArray());
 
-            using (var f = File.OpenWrite($"{pathPrefix}.{GraphPathSuffix}"))
+
+            using (var f = File.Open($"{pathPrefix}.{GraphPathSuffix}", FileMode.Create))
             {
                 world.SerializeGraph(f);
             }

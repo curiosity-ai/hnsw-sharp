@@ -9,7 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Linq;
 
-    internal partial struct Node
+    internal partial class Algorithms
     {
         /// <summary>
         /// The implementation of the SELECT-NEIGHBORS-HEURISTIC(q, C, M, lc, extendCandidates, keepPrunedConnections) algorithm.
