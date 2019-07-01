@@ -28,26 +28,32 @@ namespace HNSW.Net
 
         internal void Resize(int pointsCount)
         {
+            if(pointsCount <=0) { pointsCount = 1024; }
+
             long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
             capacity = capacity < MaxArrayLength ? capacity : MaxArrayLength;
-            int i0 = 0;
-            if (keys is null)
-            {
-                keys = new long[(int)capacity];
-                values = new TDistance[(int)capacity];
-            }
-            else
-            {
-                i0 = keys.Length;
-                Array.Resize(ref keys,   (int)capacity);
-                Array.Resize(ref values, (int)capacity);
-            }
 
-            // TODO: may be there is a better way to warm up cache and force OS to allocate pages
-            for (int i = i0; i < keys.Length; ++i)
+            if (keys is null || capacity > keys.Length)
             {
-                keys[i] = -1;
-                values[i] = default;
+                int i0 = 0;
+                if (keys is null)
+                {
+                    keys = new long[(int)capacity];
+                    values = new TDistance[(int)capacity];
+                }
+                else
+                {
+                    i0 = keys.Length;
+                    Array.Resize(ref keys, (int)capacity);
+                    Array.Resize(ref values, (int)capacity);
+                }
+
+                // TODO: may be there is a better way to warm up cache and force OS to allocate pages
+                for (int i = i0; i < keys.Length; ++i)
+                {
+                    keys[i] = -1;
+                    values[i] = default;
+                }
             }
         }
 

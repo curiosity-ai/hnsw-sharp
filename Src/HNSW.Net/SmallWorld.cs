@@ -148,6 +148,7 @@ namespace HNSW.Net
                 ExpandBestSelection = false;
                 KeepPrunedConnections = false;
                 EnableDistanceCacheForConstruction = false;
+                InitialDistanceCacheSize = 1024;
             }
 
             /// <summary>
@@ -186,6 +187,11 @@ namespace HNSW.Net
             /// Gets or sets a value indicating whether to cache calculated distances at graph construction time.
             /// </summary>
             public bool EnableDistanceCacheForConstruction { get; set; }
+
+            /// <summary>
+            /// Gets or sets a the initial distance cache size
+            /// </summary>
+            public int InitialDistanceCacheSize { get; set; }
         }
 
         public class KNNSearchResult

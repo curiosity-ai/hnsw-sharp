@@ -58,6 +58,7 @@ namespace HNSW.Net
                 if (Parameters.EnableDistanceCacheForConstruction)
                 {
                     DistanceCache = new DistanceCache<TDistance>();
+                    DistanceCache.Resize(parameters.InitialDistanceCacheSize);
                 }
 
                 DistanceCacheHitCount = 0;
