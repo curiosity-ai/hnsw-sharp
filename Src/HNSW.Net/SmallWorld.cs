@@ -109,7 +109,7 @@ namespace HNSW.Net
             try
             {
                 MessagePackBinary.WriteString(stream, SERIALIZATION_HEADER);
-                MessagePackBinary.WriteInt32(stream, Graph.Parameters.M);
+                MessagePackSerializer.Serialize(stream, Graph.Parameters);
                 Graph.Serialize(stream);
             }
             finally
@@ -143,8 +143,7 @@ namespace HNSW.Net
                 throw new InvalidDataException($"Invalid header found in stream, data is corrupted or invalid");
             }
 
-            var m = MessagePackBinary.ReadInt32(stream);
-            var parameters = new Parameters { M = m };
+            var parameters = MessagePackSerializer.Deserialize<Parameters>(stream, readStrict:true);
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
             world.Graph.Deserialize(items, stream);
             return world;
@@ -159,6 +158,7 @@ namespace HNSW.Net
             return Graph.Print();
         }
 
+        [MessagePackObject(keyAsPropertyName:true)]
         public class Parameters
         {
             public Parameters()
