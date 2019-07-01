@@ -4,6 +4,7 @@
 // </copyright>
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace HNSW.Net
 {
@@ -21,6 +22,7 @@ namespace HNSW.Net
         private TDistance[] values;
 
         private long[] keys;
+        internal int HitCount;
 
         internal DistanceCache()
         {
@@ -57,22 +59,27 @@ namespace HNSW.Net
             }
         }
 
-        internal bool TryGetValue(int fromId, int toId, out TDistance distance)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TDistance GetValue(int fromId, int toId, Func<int,int,TDistance> getter)
         {
             long key = MakeKey(fromId, toId);
             int hash = (int)(key & (MaxArrayLength - 1));
 
             if (keys[hash] == key)
             {
-                distance = values[hash];
-                return true;
+                HitCount++;
+                return values[hash];
             }
-
-            distance = default;
-            return false;
+            else
+            {
+                var d = getter(fromId, toId);
+                SetValue(fromId, toId, d);
+                return d;
+            }
         }
 
-        internal void SetValue(int fromId, int toId, TDistance distance)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetValue(int fromId, int toId, TDistance distance)
         {
             long key = MakeKey(fromId, toId);
             int hash = (int)(key & (MaxArrayLength - 1));

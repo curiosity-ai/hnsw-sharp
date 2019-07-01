@@ -8,6 +8,7 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Runtime.CompilerServices;
     using MessagePack;
 
     using static HNSW.Net.EventSources;
@@ -20,8 +21,6 @@ namespace HNSW.Net
 
             private readonly DistanceCache<TDistance> DistanceCache;
 
-            private long DistanceCacheHitCount;
-
             private long DistanceCalculationsCount;
 
             internal List<Node> Nodes { get; private set; }
@@ -32,7 +31,7 @@ namespace HNSW.Net
 
             internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; private set; }
 
-            internal float DistanceCacheHitRate => (float)DistanceCacheHitCount / DistanceCalculationsCount;
+            internal float DistanceCacheHitRate => (float)(DistanceCache?.HitCount ?? 0) / DistanceCalculationsCount;
 
             internal Core(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters)
             {
@@ -61,7 +60,6 @@ namespace HNSW.Net
                     DistanceCache.Resize(parameters.InitialDistanceCacheSize);
                 }
 
-                DistanceCacheHitCount = 0;
                 DistanceCalculationsCount = 0;
             }
 
@@ -89,21 +87,24 @@ namespace HNSW.Net
                 Items.AddRange(items);
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal TDistance GetDistance(int fromId, int toId)
             {
                 DistanceCalculationsCount++;
-
-                TDistance result;
-                if (DistanceCache != null && DistanceCache.TryGetValue(fromId, toId, out result))
+                if (DistanceCache is object)
                 {
-                    DistanceCacheHitCount++;
-                    return result;
+                    return DistanceCache.GetValue(fromId, toId, GetDistanceSkipCache);
                 }
+                else
+                {
+                    return Distance(Items[fromId], Items[toId]);
+                }
+            }
 
-                result = Distance(Items[fromId], Items[toId]);
-                DistanceCache?.SetValue(fromId, toId, result);
-
-                return result;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private TDistance GetDistanceSkipCache(int fromId, int toId)
+            {
+                return Distance(Items[fromId], Items[toId]);
             }
 
             private static int RandomLayer(IProvideRandomValues generator, double lambda)

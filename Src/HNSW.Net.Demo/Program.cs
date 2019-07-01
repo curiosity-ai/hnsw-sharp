@@ -34,7 +34,7 @@ namespace HNSW.Net.Demo
 
         private static void BuildAndSave(string pathPrefix)
         {
-            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true});
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize});
 
             Console.Write($"Generating {SampleSize} sample vectos... ");
             var clock = Stopwatch.StartNew();
