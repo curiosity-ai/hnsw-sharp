@@ -27,6 +27,8 @@ namespace HNSW.Net
 
         private ReaderWriterLockSlim LockGraph = new ReaderWriterLockSlim();
 
+        public IReadOnlyList<TItem> Items => Graph.GraphCore.Items;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
         /// </summary>

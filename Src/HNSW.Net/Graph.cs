@@ -21,19 +21,10 @@ namespace HNSW.Net
     /// <typeparam name="TDistance">The type of distance between items (expects any numeric type: float, double, decimal, int, ...).</typeparam>
     internal partial class Graph<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
     {
-        /// <summary>
-        /// The distance.
-        /// </summary>
         private readonly Func<TItem, TItem, TDistance> Distance;
 
-        /// <summary>
-        /// The core.
-        /// </summary>
-        private Core GraphCore;
+        internal Core GraphCore;
 
-        /// <summary>
-        /// The entry point.
-        /// </summary>
         private Node? EntryPoint;
 
         /// <summary>
@@ -47,9 +38,6 @@ namespace HNSW.Net
             Parameters = parameters;
         }
 
-        /// <summary>
-        /// Gets the parameters.
-        /// </summary>
         internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; }
 
         /// <summary>
