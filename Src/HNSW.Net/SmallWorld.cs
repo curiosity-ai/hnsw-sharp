@@ -121,7 +121,7 @@ namespace HNSW.Net
         /// <param name="bytes">The serialized parameters and edges.</param>
         public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream)
         {
-            var m = (int)MessagePackBinary.ReadInt32(stream);
+            var m = MessagePackBinary.ReadInt32(stream);
             var parameters = new Parameters { M = m };
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
             world.Graph.Deserialize(items, stream);
