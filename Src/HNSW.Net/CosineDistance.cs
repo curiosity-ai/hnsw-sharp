@@ -33,7 +33,7 @@ namespace HNSW.Net
         /// <param name="v">Right vector.</param>
         /// <returns>Cosine distance between u and v.</returns>
         public static float NonOptimized(float[] u, float[] v)
-        {   
+        {
             if (u.Length != v.Length)
             {
                 throw new ArgumentException("Vectors have non-matching dimensions");
@@ -115,8 +115,15 @@ namespace HNSW.Net
             }
 
             norm = Vector2.SquareRoot(norm);
-            var similarity = dot / (norm.X * norm.Y);
-            return 1 - similarity;
+            float n = (norm.X * norm.Y);
+
+            if (n == 0)
+            {
+                return 1f;
+            }
+
+            var similarity = dot / n;
+            return 1f - similarity;
         }
 
         /// <summary>
