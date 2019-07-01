@@ -19,6 +19,7 @@ namespace HNSW.Net
     /// <typeparam name="TDistance">The type of distance between items (expect any numeric type: float, double, decimal, int, ...).</typeparam>
     public partial class SmallWorld<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
     {
+        private const string SERIALIZATION_HEADER = "HNSW";
         private readonly Func<TItem, TItem, TDistance> Distance;
 
         private Graph<TItem, TDistance> Graph;
@@ -105,6 +106,7 @@ namespace HNSW.Net
             LockGraph.EnterReadLock();
             try
             {
+                MessagePackBinary.WriteString(stream, SERIALIZATION_HEADER);
                 MessagePackBinary.WriteInt32(stream, Graph.Parameters.M);
                 Graph.Serialize(stream);
             }
@@ -121,6 +123,24 @@ namespace HNSW.Net
         /// <param name="bytes">The serialized parameters and edges.</param>
         public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream)
         {
+            var p0 = stream.Position;
+            string hnswHeader;
+            try
+            {
+                hnswHeader = MessagePackBinary.ReadString(stream);
+            }
+            catch(Exception E)
+            {
+                if(stream.CanSeek) { stream.Position = p0; } //Resets the stream to original position
+                throw new InvalidDataException($"Invalid header found in stream, data is corrupted or invalid", E);
+            }
+
+            if (hnswHeader != SERIALIZATION_HEADER)
+            {
+                if (stream.CanSeek) { stream.Position = p0; } //Resets the stream to original position
+                throw new InvalidDataException($"Invalid header found in stream, data is corrupted or invalid");
+            }
+
             var m = MessagePackBinary.ReadInt32(stream);
             var parameters = new Parameters { M = m };
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
