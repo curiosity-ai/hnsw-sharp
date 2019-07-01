@@ -22,6 +22,7 @@ namespace HNSW.Net
         private TDistance[] values;
 
         private long[] keys;
+
         internal int HitCount;
 
         internal DistanceCache()
@@ -73,7 +74,8 @@ namespace HNSW.Net
             else
             {
                 var d = getter(fromId, toId);
-                SetValue(fromId, toId, d);
+                keys[hash] = key;
+                values[hash] = d;
                 return d;
             }
         }
