@@ -65,7 +65,8 @@ namespace HNSW.Net
                     var visited = new HashSet<int>(candidatesHeap.Buffer);
                     foreach (var candidateId in candidatesHeap.Buffer)
                     {
-                        foreach (var candidateNeighbourId in GraphCore.Nodes[candidateId][layer])
+                        var candidateNeighborsIDs = GraphCore.Nodes[candidateId][layer];
+                        foreach (var candidateNeighbourId in candidateNeighborsIDs)
                         {
                             if (!visited.Contains(candidateNeighbourId))
                             {

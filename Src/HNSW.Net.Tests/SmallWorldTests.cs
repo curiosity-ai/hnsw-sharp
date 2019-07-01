@@ -64,6 +64,7 @@ namespace HNSW.Net.Tests
             string original;
 
             // restrict scope of original graph
+            var stream = new MemoryStream();
             {
                 var parameters = new SmallWorld<float[], float>.Parameters()
                 {
@@ -74,11 +75,12 @@ namespace HNSW.Net.Tests
                 var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
                 graph.AddItems(vectors);
 
-                buffer = graph.SerializeGraph();
+                graph.SerializeGraph(stream);
                 original = graph.Print();
             }
+            stream.Position = 0;
 
-            var copy = SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, buffer);
+            var copy = SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, stream);
 
             Assert.AreEqual(original, copy.Print());
         }

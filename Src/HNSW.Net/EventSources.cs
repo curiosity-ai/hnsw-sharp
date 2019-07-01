@@ -42,8 +42,7 @@ namespace HNSW.Net
             /// <summary>
             /// Initializes a new instance of the <see cref="GraphBuildEventSource"/> class.
             /// </summary>
-            private GraphBuildEventSource()
-                : base(EventSourceSettings.EtwSelfDescribingEventFormat)
+            private GraphBuildEventSource() : base(EventSourceSettings.EtwSelfDescribingEventFormat)
             {
                 var coreGetDistanceCacheHitRate = new EventCounter("GetDistance.CacheHitRate", this);
                 CoreGetDistanceCacheHitRateReporter = (float value) => WriteMetricIfEnabled(this, coreGetDistanceCacheHitRate, value);
@@ -81,8 +80,7 @@ namespace HNSW.Net
             /// <summary>
             /// Initializes a new instance of the <see cref="GraphSearchEventSource"/> class.
             /// </summary>
-            private GraphSearchEventSource()
-                : base(EventSourceSettings.EtwSelfDescribingEventFormat)
+            private GraphSearchEventSource() : base(EventSourceSettings.EtwSelfDescribingEventFormat)
             {
                 var graphKNearestLatency = new EventCounter("KNearest.Latency", this);
                 GraphKNearestLatencyReporter = (float value) => WriteMetricIfEnabled(this, graphKNearestLatency, value);
