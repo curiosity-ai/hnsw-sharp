@@ -17,7 +17,7 @@ namespace HNSW.Net
         /// 2^29 = 536870912
         /// 2^30 = 1073741824
         /// </summary>
-        private const int MaxArrayLength = 1073741824; // 0x40000000;
+        private const int MaxArrayLength = 268435456; // 0x10000000;
 
         private TDistance[] values;
 
@@ -41,22 +41,19 @@ namespace HNSW.Net
                 int i0 = 0;
                 if (keys is null)
                 {
-                    keys = new long[(int)capacity];
+                    keys   = new long[(int)capacity];
                     values = new TDistance[(int)capacity];
                 }
                 else
                 {
                     i0 = keys.Length;
-                    Array.Resize(ref keys, (int)capacity);
+                    Array.Resize(ref keys,   (int)capacity);
                     Array.Resize(ref values, (int)capacity);
                 }
 
                 // TODO: may be there is a better way to warm up cache and force OS to allocate pages
-                for (int i = i0; i < keys.Length; ++i)
-                {
-                    keys[i] = -1;
-                    values[i] = default;
-                }
+                keys.AsSpan().Slice(i0).Fill(-1);
+                values.AsSpan().Slice(i0).Fill(default);
             }
         }
 

@@ -9,6 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using System.IO;
+    using System.Linq;
     using System.Threading;
     using MessagePack;
 
@@ -27,7 +28,32 @@ namespace HNSW.Net
 
         private ReaderWriterLockSlim LockGraph = new ReaderWriterLockSlim();
 
-        public IReadOnlyList<TItem> Items => Graph.GraphCore.Items;
+        /// <summary>
+        /// Gets the list of items currently held by the SmallWorld graph. 
+        /// The list is not protected by any locks, and should only be used when it is known the graph won't change
+        /// </summary>
+        public IReadOnlyList<TItem> UnsafeItems => Graph.GraphCore.Items;
+
+        /// <summary>
+        /// Gets a copy of the list of items currently held by the SmallWorld graph. 
+        /// This call is protected by a read-lock and is safe to be called from multiple threads.
+        /// </summary>
+        public IReadOnlyList<TItem> Items
+        {
+            get
+            {
+                LockGraph.EnterReadLock();
+                try
+                {
+                    return Graph.GraphCore.Items.ToList();
+                }
+                finally
+                {
+                    LockGraph.ExitReadLock();
+                }
+            }
+        }
+
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SmallWorld{TItem, TDistance}"/> class.
@@ -88,6 +114,23 @@ namespace HNSW.Net
             try
             {
                 return Graph.KNearest(item, k);
+            }
+            finally
+            {
+                LockGraph.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// Get the item with the index
+        /// </summary>
+        /// <param name="index">The index of the item</param>
+        public TItem GetItem(int index)
+        {
+            LockGraph.EnterReadLock();
+            try
+            {
+                return Items[index];
             }
             finally
             {
