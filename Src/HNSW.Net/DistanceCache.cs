@@ -61,7 +61,7 @@ namespace HNSW.Net
         internal TDistance GetValue(int fromId, int toId, Func<int,int,TDistance> getter)
         {
             long key = MakeKey(fromId, toId);
-            int hash = (int)(key & (MaxArrayLength - 1));
+            int hash = (int)(key & (keys.Length - 1));
 
             if (keys[hash] == key)
             {
@@ -81,7 +81,7 @@ namespace HNSW.Net
         private void SetValue(int fromId, int toId, TDistance distance)
         {
             long key = MakeKey(fromId, toId);
-            int hash = (int)(key & (MaxArrayLength - 1));
+            int hash = (int)(key & (keys.Length - 1));
             keys[hash] = key;
             values[hash] = distance;
         }
