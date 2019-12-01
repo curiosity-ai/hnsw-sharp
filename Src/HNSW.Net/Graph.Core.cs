@@ -83,7 +83,9 @@ namespace HNSW.Net
 
             internal void Deserialize(IReadOnlyList<TItem> items, Stream stream)
             {
-                Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream, readStrict:true);
+                // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
+                //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
+                Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream);
                 Items.AddRange(items);
             }
 

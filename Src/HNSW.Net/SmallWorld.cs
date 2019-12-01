@@ -12,6 +12,7 @@ namespace HNSW.Net
     using System.Linq;
     using System.Threading;
     using MessagePack;
+    using MessagePackCompat;
 
     /// <summary>
     /// The Hierarchical Navigable Small World Graphs. https://arxiv.org/abs/1603.09320
@@ -186,7 +187,10 @@ namespace HNSW.Net
                 throw new InvalidDataException($"Invalid header found in stream, data is corrupted or invalid");
             }
 
-            var parameters = MessagePackSerializer.Deserialize<Parameters>(stream, readStrict:true);
+            // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
+            //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
+
+            var parameters = MessagePackSerializer.Deserialize<Parameters>(stream);
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
             world.Graph.Deserialize(items, stream);
             return world;

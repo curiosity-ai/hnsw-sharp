@@ -20,7 +20,7 @@ Fork from original at https://github.com/microsoft/HNSW.Net, adds support for in
  
   
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="1.7.3.7" />
+    <PackageReference Include="MessagePack" Version="2.0.270-rc" />
     <PackageReference Include="System.Memory" Version="4.5.3" />
     <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
   </ItemGroup>
