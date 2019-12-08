@@ -37,8 +37,11 @@ namespace HNSW.Net
             {
                 Distance = distance;
                 Parameters = parameters;
-                Nodes = new List<Node>();
-                Items = new List<TItem>();
+                
+                var initialSize = Math.Max(1024, parameters.InitialItemsSize);
+
+                Nodes = new List<Node>(initialSize);
+                Items = new List<TItem>(initialSize);
 
                 switch (Parameters.NeighbourHeuristic)
                 {

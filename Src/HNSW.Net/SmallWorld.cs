@@ -218,6 +218,7 @@ namespace HNSW.Net
                 KeepPrunedConnections = false;
                 EnableDistanceCacheForConstruction = false;
                 InitialDistanceCacheSize = 1024;
+                InitialItemsSize = 1024;
             }
 
             /// <summary>
@@ -261,6 +262,11 @@ namespace HNSW.Net
             /// Gets or sets a the initial distance cache size
             /// </summary>
             public int InitialDistanceCacheSize { get; set; }
+
+            /// <summary>
+            /// Gets or sets a the initial size of the Items list
+            /// </summary>
+            public int InitialItemsSize { get; set; }
         }
 
         public class KNNSearchResult
