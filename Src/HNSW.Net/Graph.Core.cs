@@ -63,13 +63,11 @@ namespace HNSW.Net
                 DistanceCalculationsCount = 0;
             }
 
-
             internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
             {
                 Items.AddRange(items);
                 DistanceCache?.Resize(items.Count);
                 int id0 = Nodes.Count;
-                Nodes.Capacity += items.Count;
                 for (int id = 0; id < items.Count; ++id)
                 {
                     Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
