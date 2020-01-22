@@ -9,6 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.IO;
     using System.Runtime.CompilerServices;
+    using System.Threading;
     using MessagePack;
 
     using static HNSW.Net.EventSources;
@@ -66,14 +67,20 @@ namespace HNSW.Net
                 DistanceCalculationsCount = 0;
             }
 
-            internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
+            internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
             {
+                int newCount = items.Count;
+
                 Items.AddRange(items);
-                DistanceCache?.Resize(items.Count);
+                DistanceCache?.Resize(newCount);
+
                 int id0 = Nodes.Count;
-                for (int id = 0; id < items.Count; ++id)
+
+                for (int id = 0; id < newCount; ++id)
                 {
                     Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
+                    cancellationToken.ThrowIfCancellationRequested();
+                    progressReporter?.Progress(id, newCount);
                 }
             }
 

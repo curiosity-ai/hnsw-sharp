@@ -13,6 +13,7 @@ namespace HNSW.Net
     using System.Text;
 
     using static HNSW.Net.EventSources;
+    using System.Threading;
 
     /// <summary>
     /// The implementation of a hierarchical small world graph.
@@ -47,7 +48,7 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
-        internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
+        internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
         {
             if (items is null || !items.Any()) { return; }
 
@@ -55,7 +56,7 @@ namespace HNSW.Net
 
             int startIndex = GraphCore.Items.Count;
 
-            GraphCore.AddItems(items, generator);
+            GraphCore.AddItems(items, generator, progressReporter, cancellationToken);
 
             var entryPoint = EntryPoint.HasValue ? EntryPoint.Value : GraphCore.Nodes[0];
 
@@ -65,6 +66,7 @@ namespace HNSW.Net
 
             for (int nodeId = startIndex; nodeId < GraphCore.Nodes.Count; ++nodeId)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 using (new ScopeLatencyTracker(GraphBuildEventSource.Instance?.GraphInsertNodeLatencyReporter))
                 {
                     /*
