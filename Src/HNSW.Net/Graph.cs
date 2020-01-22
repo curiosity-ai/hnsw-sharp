@@ -50,7 +50,7 @@ namespace HNSW.Net
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
         /// <param name="progressReporter">Interface to report progress </param>
         /// <param name="cancellationToken">Token to cancel adding items to the graph. The graph state will be corrupt if you cancel, and will need to be rebuilt from scratch.</param>
-        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
+        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
         {
             if (items is null || !items.Any()) { return Array.Empty<int>(); }
 
