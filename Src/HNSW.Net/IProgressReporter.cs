@@ -2,6 +2,6 @@
 {
     public interface IProgressReporter
     {
-        void Progress(int current, int total);
+        void Progress(int step, int current, int total);
     }
 }

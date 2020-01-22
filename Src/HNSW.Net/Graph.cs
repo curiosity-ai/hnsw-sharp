@@ -48,6 +48,8 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
+        /// <param name="progressReporter">Interface to report progress </param>
+        /// <param name="cancellationToken">Token to cancel adding items to the graph. The graph state will be corrupt if you cancel, and will need to be rebuilt from scratch.</param>
         internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
         {
             if (items is null || !items.Any()) { return Array.Empty<int>(); }
@@ -132,6 +134,7 @@ namespace HNSW.Net
                     // report distance cache hit rate
                     GraphBuildEventSource.Instance?.CoreGetDistanceCacheHitRateReporter?.Invoke(GraphCore.DistanceCacheHitRate);
                 }
+                progressReporter.Progress(2, nodeId, GraphCore.Nodes.Count - startIndex);
             }
 
             // construction is done

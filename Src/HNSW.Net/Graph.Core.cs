@@ -82,7 +82,7 @@ namespace HNSW.Net
                     Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
                     newIDs.Add(id0 + id);
                     cancellationToken.ThrowIfCancellationRequested();
-                    progressReporter?.Progress(id, newCount);
+                    progressReporter?.Progress(1, id, newCount);
                 }
                 return newIDs;
             }
