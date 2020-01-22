@@ -58,7 +58,7 @@ namespace HNSW.Net
 
             int startIndex = GraphCore.Items.Count;
 
-            var newIDs = GraphCore.AddItems(items, generator, progressReporter, cancellationToken);
+            var newIDs = GraphCore.AddItems(items, generator, cancellationToken);
 
             var entryPoint = EntryPoint.HasValue ? EntryPoint.Value : GraphCore.Nodes[0];
 
@@ -134,7 +134,7 @@ namespace HNSW.Net
                     // report distance cache hit rate
                     GraphBuildEventSource.Instance?.CoreGetDistanceCacheHitRateReporter?.Invoke(GraphCore.DistanceCacheHitRate);
                 }
-                progressReporter?.Progress(2, nodeId, GraphCore.Nodes.Count - startIndex);
+                progressReporter?.Progress(nodeId - startIndex, GraphCore.Nodes.Count - startIndex);
             }
 
             // construction is done

@@ -67,7 +67,7 @@ namespace HNSW.Net
                 DistanceCalculationsCount = 0;
             }
 
-            internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
+            internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, CancellationToken cancellationToken)
             {
                 int newCount = items.Count;
 
@@ -82,7 +82,6 @@ namespace HNSW.Net
                     Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
                     newIDs.Add(id0 + id);
                     cancellationToken.ThrowIfCancellationRequested();
-                    progressReporter?.Progress(1, id, newCount);
                 }
                 return newIDs;
             }
