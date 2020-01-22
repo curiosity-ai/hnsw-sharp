@@ -134,7 +134,7 @@ namespace HNSW.Net
                     // report distance cache hit rate
                     GraphBuildEventSource.Instance?.CoreGetDistanceCacheHitRateReporter?.Invoke(GraphCore.DistanceCacheHitRate);
                 }
-                progressReporter.Progress(2, nodeId, GraphCore.Nodes.Count - startIndex);
+                progressReporter?.Progress(2, nodeId, GraphCore.Nodes.Count - startIndex);
             }
 
             // construction is done
