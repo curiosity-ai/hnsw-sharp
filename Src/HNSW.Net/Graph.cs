@@ -48,15 +48,15 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
-        internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
+        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
         {
-            if (items is null || !items.Any()) { return; }
+            if (items is null || !items.Any()) { return Array.Empty<int>(); }
 
             GraphCore = GraphCore ?? new Core(Distance, Parameters);
 
             int startIndex = GraphCore.Items.Count;
 
-            GraphCore.AddItems(items, generator, progressReporter, cancellationToken);
+            var newIDs = GraphCore.AddItems(items, generator, progressReporter, cancellationToken);
 
             var entryPoint = EntryPoint.HasValue ? EntryPoint.Value : GraphCore.Nodes[0];
 
@@ -136,6 +136,7 @@ namespace HNSW.Net
 
             // construction is done
             EntryPoint = entryPoint;
+            return newIDs;
         }
 
         /// <summary>

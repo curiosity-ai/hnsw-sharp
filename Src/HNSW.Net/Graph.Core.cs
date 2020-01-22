@@ -67,10 +67,11 @@ namespace HNSW.Net
                 DistanceCalculationsCount = 0;
             }
 
-            internal void AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
+            internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
             {
                 int newCount = items.Count;
 
+                var newIDs = new List<int>();
                 Items.AddRange(items);
                 DistanceCache?.Resize(newCount);
 
@@ -79,9 +80,11 @@ namespace HNSW.Net
                 for (int id = 0; id < newCount; ++id)
                 {
                     Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
+                    newIDs.Add(id0 + id);
                     cancellationToken.ThrowIfCancellationRequested();
                     progressReporter?.Progress(id, newCount);
                 }
+                return newIDs;
             }
 
             internal void Serialize(Stream stream)
