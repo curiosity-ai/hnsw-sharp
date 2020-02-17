@@ -29,6 +29,7 @@ steps:
     command: 'pack'
     packagesToPack: '$(project)'
     versioningScheme: 'off'
+    configuration: 'Release'
     buildProperties: 'Version="1.0.$(build.buildId)";LangVersion="latest"'
     nobuild: true
 
