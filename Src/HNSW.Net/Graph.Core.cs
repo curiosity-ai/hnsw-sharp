@@ -61,7 +61,7 @@ namespace HNSW.Net
                 if (Parameters.EnableDistanceCacheForConstruction)
                 {
                     DistanceCache = new DistanceCache<TDistance>();
-                    DistanceCache.Resize(parameters.InitialDistanceCacheSize);
+                    DistanceCache.Resize(parameters.InitialDistanceCacheSize, false);
                 }
 
                 DistanceCalculationsCount = 0;
@@ -73,7 +73,7 @@ namespace HNSW.Net
 
                 var newIDs = new List<int>();
                 Items.AddRange(items);
-                DistanceCache?.Resize(newCount);
+                DistanceCache?.Resize(newCount, false);
 
                 int id0 = Nodes.Count;
 
@@ -88,7 +88,7 @@ namespace HNSW.Net
 
             internal void ResizeDistanceCache(int newSize)
             {
-                DistanceCache?.Resize(newSize);
+                DistanceCache?.Resize(newSize, true);
             }
 
             internal void Serialize(Stream stream)

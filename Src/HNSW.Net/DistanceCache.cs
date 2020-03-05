@@ -29,17 +29,17 @@ namespace HNSW.Net
         {
         }
 
-        internal void Resize(int pointsCount)
+        internal void Resize(int pointsCount, bool overwrite)
         {
             if(pointsCount <=0) { pointsCount = 1024; }
 
             long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
             capacity = capacity < MaxArrayLength ? capacity : MaxArrayLength;
 
-            if (keys is null || capacity > keys.Length)
+            if (keys is null || capacity > keys.Length || overwrite)
             {
                 int i0 = 0;
-                if (keys is null)
+                if (keys is null || overwrite)
                 {
                     keys   = new long[(int)capacity];
                     values = new TDistance[(int)capacity];
