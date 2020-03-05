@@ -86,6 +86,11 @@ namespace HNSW.Net
                 return newIDs;
             }
 
+            internal void ResizeDistanceCache(int newSize)
+            {
+                DistanceCache?.Resize(newSize);
+            }
+
             internal void Serialize(Stream stream)
             {
                 MessagePackSerializer.Serialize(stream, Nodes);
