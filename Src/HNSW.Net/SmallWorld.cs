@@ -191,6 +191,10 @@ namespace HNSW.Net
             //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
 
             var parameters = MessagePackSerializer.Deserialize<Parameters>(stream);
+
+            //Overwrite previous InitialDistanceCacheSize parameter, so we don't waste time/memory allocating a distance cache for an already existing graph
+            parameters.InitialDistanceCacheSize = 0;
+
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
             world.Graph.Deserialize(items, stream);
             return world;
@@ -267,7 +271,8 @@ namespace HNSW.Net
             public bool EnableDistanceCacheForConstruction { get; set; }
 
             /// <summary>
-            /// Gets or sets a the initial distance cache size
+            /// Gets or sets a the initial distance cache size. 
+            /// Note: This value is reset to 0 on deserialization to avoid allocating the distance cache for pre-built graphs.
             /// </summary>
             public int InitialDistanceCacheSize { get; set; }
 
