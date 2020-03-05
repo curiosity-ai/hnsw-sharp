@@ -9,6 +9,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HNSW.Net.Tests", "HNSW.Net.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HNSW.Net.Demo", "HNSW.Net.Demo\HNSW.Net.Demo.csproj", "{6F62C4BE-5D1C-4302-9813-E707EB902221}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".azuredevops", ".azuredevops", "{07C754D2-86A3-46F1-B78D-9C81F8974996}"
+	ProjectSection(SolutionItems) = preProject
+		..\build-nuget.yml = ..\build-nuget.yml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

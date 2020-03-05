@@ -208,9 +208,9 @@ namespace HNSW.Net
         /// <summary>
         /// Frees the memory used by the Distance Cache
         /// </summary>
-        public void ResizeDistanceCache()
+        public void ResizeDistanceCache(int newSize)
         {
-            Graph.GraphCore.ResizeDistanceCache();
+            Graph.GraphCore.ResizeDistanceCache(newSize);
         }
 
         [MessagePackObject(keyAsPropertyName:true)]
