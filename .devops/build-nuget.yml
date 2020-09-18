@@ -1,13 +1,12 @@
 variables:
   project:  './Src/HNSW.Net/HNSW.Net.csproj'
-  buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
 
 trigger:
 - master
 
 pool:
-  vmImage: 'VS2017-Win2016'
+  vmImage: 'windows-latest'
 
 steps:
 - task: NuGetToolInstaller@0
@@ -16,7 +15,7 @@ steps:
   inputs:
     command: 'restore'
     projects: '$(project)'
-    displayName: 'restore nuget'
+  displayName: 'restore nuget'
 
 - task: DotNetCoreCLI@2
   inputs:
@@ -29,7 +28,7 @@ steps:
     command: 'pack'
     packagesToPack: '$(project)'
     versioningScheme: 'off'
-    configuration: 'Release'
+    configuration: '$(buildConfiguration)'
     buildProperties: 'Version="1.0.$(build.buildId)";LangVersion="latest"'
     nobuild: true
 
@@ -37,6 +36,6 @@ steps:
   inputs:
     command: 'push'
     packagesToPush: '**/*.nupkg'
-    displayName: 'push nuget'
     nuGetFeedType: 'external'
     publishFeedCredentials: 'nuget-curiosity'
+  displayName: 'push nuget'
