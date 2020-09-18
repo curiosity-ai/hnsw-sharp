@@ -46,12 +46,12 @@ namespace HNSW.Net
 
                 switch (Parameters.NeighbourHeuristic)
                 {
-                    case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectSimple:
+                    case NeighbourSelectionHeuristic.SelectSimple:
                     {
                         Algorithm = new Algorithms.Algorithm3<TItem, TDistance>(this);
                         break;
                     }
-                    case SmallWorld<TItem, TDistance>.NeighbourSelectionHeuristic.SelectHeuristic:
+                    case NeighbourSelectionHeuristic.SelectHeuristic:
                     {
                         Algorithm = new Algorithms.Algorithm4<TItem, TDistance>(this);
                         break;

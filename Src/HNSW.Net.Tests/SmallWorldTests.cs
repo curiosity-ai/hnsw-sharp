@@ -72,7 +72,7 @@ namespace HNSW.Net.Tests
         [DataRow(true, true)]
         public void KNNSearchTestAlgorithm4(bool expandBestSelection, bool keepPrunedConnections )
         {
-            var parameters = new SmallWorld<float[], float>.Parameters() { NeighbourHeuristic = SmallWorld<float[], float>.NeighbourSelectionHeuristic.SelectHeuristic, ExpandBestSelection = expandBestSelection, KeepPrunedConnections = keepPrunedConnections };
+            var parameters = new SmallWorld<float[], float>.Parameters() { NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, ExpandBestSelection = expandBestSelection, KeepPrunedConnections = keepPrunedConnections };
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
             graph.AddItems(vectors);
 

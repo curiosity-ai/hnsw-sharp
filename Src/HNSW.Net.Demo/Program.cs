@@ -19,8 +19,8 @@ namespace HNSW.Net.Demo
 
     public static partial class Program
     {
-        private const int SampleSize = 5_000;
-        private const int SampleIncrSize = 1_000;
+        private const int SampleSize = 5_00;
+        private const int SampleIncrSize = 1_00;
         private const int TestSize = 10 * SampleSize;
         private const int Dimensionality = 128;
         private const string VectorsPathSuffix = "vectors.hnsw";
@@ -34,7 +34,7 @@ namespace HNSW.Net.Demo
 
         private static void BuildAndSave(string pathPrefix)
         {
-            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = SmallWorld<float[], float>.NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true});
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true});
 
             Console.Write($"Generating {SampleSize} sample vectos... ");
             var clock = Stopwatch.StartNew();
