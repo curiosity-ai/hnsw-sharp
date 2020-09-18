@@ -228,8 +228,8 @@ namespace HNSW.Net
                 ConstructionPruning = 200;
                 ExpandBestSelection = false;
                 KeepPrunedConnections = false;
-                EnableDistanceCacheForConstruction = false;
-                InitialDistanceCacheSize = 1024;
+                EnableDistanceCacheForConstruction = true;
+                InitialDistanceCacheSize = 1024 * 1024;
                 InitialItemsSize = 1024;
             }
 

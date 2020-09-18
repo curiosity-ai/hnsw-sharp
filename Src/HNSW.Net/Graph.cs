@@ -60,7 +60,7 @@ namespace HNSW.Net
 
             var newIDs = GraphCore.AddItems(items, generator, cancellationToken);
 
-            var entryPoint = EntryPoint.HasValue ? EntryPoint.Value : GraphCore.Nodes[0];
+            var entryPoint = EntryPoint ?? GraphCore.Nodes[0];
 
             var searcher = new Searcher(GraphCore);
             Func<int, int, TDistance> nodeDistance = GraphCore.GetDistance;
