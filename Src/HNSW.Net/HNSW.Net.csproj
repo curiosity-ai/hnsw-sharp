@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netstandard2.1;net7.0</TargetFrameworks>
     <Platforms>AnyCPU</Platforms>
     <Company>Curiosity GmbH</Company>
     <PackageId>HNSW</PackageId>
@@ -21,8 +21,8 @@ Fork from original at https://github.com/microsoft/HNSW.Net, adds support for in
  
   
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="2.3.75" />
-    <PackageReference Include="System.Memory" Version="4.5.4" />
+    <PackageReference Include="MessagePack" Version="2.4.35" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
     <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
   </ItemGroup>
 </Project>
