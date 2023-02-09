@@ -49,8 +49,7 @@ namespace HNSW.Net
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
         /// <param name="progressReporter">Interface to report progress </param>
-        /// <param name="cancellationToken">Token to cancel adding items to the graph. The graph state will be corrupt if you cancel, and will need to be rebuilt from scratch.</param>
-        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
+        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter)
         {
             if (items is null || !items.Any()) { return Array.Empty<int>(); }
 
@@ -58,7 +57,7 @@ namespace HNSW.Net
 
             int startIndex = GraphCore.Items.Count;
 
-            var newIDs = GraphCore.AddItems(items, generator, cancellationToken);
+            var newIDs = GraphCore.AddItems(items, generator);
 
             var entryPoint = EntryPoint ?? GraphCore.Nodes[0];
 
@@ -68,7 +67,6 @@ namespace HNSW.Net
 
             for (int nodeId = startIndex; nodeId < GraphCore.Nodes.Count; ++nodeId)
             {
-                cancellationToken.ThrowIfCancellationRequested();
                 using (new ScopeLatencyTracker(GraphBuildEventSource.Instance?.GraphInsertNodeLatencyReporter))
                 {
                     /*
