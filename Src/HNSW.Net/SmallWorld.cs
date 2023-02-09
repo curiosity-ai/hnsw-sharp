@@ -76,12 +76,12 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to connect into the graph.</param>
 
-        public IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
+        public IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProgressReporter progressReporter = null)
         {
             LockGraph.EnterWriteLock();
             try
             {
-               return Graph.AddItems(items, Generator, progressReporter, cancellationToken);
+               return Graph.AddItems(items, Generator, progressReporter);
             }
             finally
             {
