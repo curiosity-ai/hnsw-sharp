@@ -12,31 +12,97 @@ namespace HNSW.Net.Demo
     using System.Linq;
     using System.Numerics;
     using System.Runtime.CompilerServices;
+    using System.Runtime.Intrinsics;
     using System.Runtime.Serialization.Formatters.Binary;
+    using System.Threading;
     using System.Threading.Tasks;
 
     using Parameters = SmallWorld<float[], float>.Parameters;
 
     public static partial class Program
     {
-        private const int SampleSize = 5_00;
-        private const int SampleIncrSize = 1_00;
+        private const int SampleSize = 500;
+        private const int SampleIncrSize = 100;
         private const int TestSize = 10 * SampleSize;
         private const int Dimensionality = 128;
         private const string VectorsPathSuffix = "vectors.hnsw";
         private const string GraphPathSuffix = "graph.hnsw";
 
-        public static void Main()
+        public static async Task Main()
         {
+            await MultithreadAddAndReadAsync();
             BuildAndSave("random");
             LoadAndSearch("random");
+        }
+
+        private static async Task MultithreadAddAndReadAsync()
+        {
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true}, threadSafe : false);
+
+            var cts = new CancellationTokenSource();
+
+            var taskAdd = Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    Console.Write($"Generating {SampleSize} sample vectors... ");
+                    var clock = Stopwatch.StartNew();
+                    var sampleVectors = RandomVectors(Dimensionality, SampleSize);
+                    Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
+
+                    Console.WriteLine("Building HNSW graph... ");
+
+                    using (var listener = new MetricsEventListener(EventSources.GraphBuildEventSource.Instance))
+                    {
+                        clock = Stopwatch.StartNew();
+                        for (int i = 0; i < (SampleSize / SampleIncrSize); i++)
+                        {
+                            world.AddItems(sampleVectors.Skip(i * SampleIncrSize).Take(SampleIncrSize).ToArray());
+                            Console.WriteLine($"\nAt {i + 1} of {SampleSize / SampleIncrSize}  Elapsed: {clock.ElapsedMilliseconds} ms.\n");
+                        }
+                        Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
+                    }
+                }
+            });
+
+            var taskSearch = Task.Run(async () =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var searchVectors = RandomVectors(Dimensionality, SampleSize);
+                        Console.WriteLine("Running search agains the graph... ");
+                        using (var listener = new MetricsEventListener(EventSources.GraphSearchEventSource.Instance))
+                        {
+                            var clock = Stopwatch.StartNew();
+                            await Parallel.ForEachAsync(searchVectors, (vector, ct) =>
+                            {
+                                world.KNNSearch(vector, 10);
+                                Console.Write('.');
+                                return default;
+                            });
+                            Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
+                        }
+                    }
+                    catch (Exception E)
+                    {
+                        throw;
+                    }
+                }
+            });
+
+
+            cts.CancelAfter(TimeSpan.FromMinutes(15));
+
+            await Task.WhenAll(taskAdd, taskSearch);
         }
 
         private static void BuildAndSave(string pathPrefix)
         {
             var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true});
 
-            Console.Write($"Generating {SampleSize} sample vectos... ");
+            Console.Write($"Generating {SampleSize} sample vectors... ");
             var clock = Stopwatch.StartNew();
             var sampleVectors = RandomVectors(Dimensionality, SampleSize);
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
@@ -57,7 +123,9 @@ namespace HNSW.Net.Demo
             clock = Stopwatch.StartNew();
             BinaryFormatter formatter = new BinaryFormatter();
             MemoryStream sampleVectorsStream = new MemoryStream();
+#pragma warning disable SYSLIB0011 // Type or member is obsolete
             formatter.Serialize(sampleVectorsStream, sampleVectors);
+#pragma warning restore SYSLIB0011 // Type or member is obsolete
             File.WriteAllBytes($"{pathPrefix}.{VectorsPathSuffix}", sampleVectorsStream.ToArray());
 
 
@@ -76,7 +144,9 @@ namespace HNSW.Net.Demo
             Console.Write("Loading HNSW graph... ");
             clock = Stopwatch.StartNew();
             BinaryFormatter formatter = new BinaryFormatter();
+#pragma warning disable SYSLIB0011 // Type or member is obsolete
             var sampleVectors = (List<float[]>)formatter.Deserialize(new MemoryStream(File.ReadAllBytes($"{pathPrefix}.{VectorsPathSuffix}")));
+#pragma warning restore SYSLIB0011 // Type or member is obsolete
             SmallWorld<float[], float> world;
             using (var f = File.OpenRead($"{pathPrefix}.{GraphPathSuffix}"))
             {

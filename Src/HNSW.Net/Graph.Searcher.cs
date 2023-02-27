@@ -41,8 +41,9 @@ namespace HNSW.Net
             /// <param name="resultList">The list of identifiers of the nearest neighbours at the level.</param>
             /// <param name="layer">The layer to perform search at.</param>
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
+            /// <param name="version">The version of the graph, will retry the search if the version changed</param>
             /// <returns>The number of expanded nodes during the run.</returns>
-            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k)
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -78,50 +79,61 @@ namespace HNSW.Net
                 expansionHeap.Push(entryPointId);
                 VisitedSet.Add(entryPointId);
 
-                // run bfs
-                int visitedNodesCount = 1;
-                while (expansionHeap.Buffer.Count > 0)
+                try
                 {
-                    // get next candidate to check and expand
-                    var toExpandId = expansionHeap.Pop();
-                    var farthestResultId = resultHeap.Buffer[0];
-                    if (DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
+                    // run bfs
+                    int visitedNodesCount = 1;
+                    while (expansionHeap.Buffer.Count > 0)
                     {
-                        // the closest candidate is farther than farthest result
-                        break;
-                    }
+                        GraphChangedException.ThrowIfChanged(ref version, versionAtStart);
 
-                    // expand candidate
-                    var neighboursIds = Core.Nodes[toExpandId][layer];
-                    for (int i = 0; i < neighboursIds.Count; ++i)
-                    {
-                        int neighbourId = neighboursIds[i];
-                        if (!VisitedSet.Contains(neighbourId))
+                        // get next candidate to check and expand
+                        var toExpandId = expansionHeap.Pop();
+                        var farthestResultId = resultHeap.Buffer[0];
+                        if (DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
                         {
-                            // enqueue perspective neighbours to expansion list
-                            farthestResultId = resultHeap.Buffer[0];
-                            if (resultHeap.Buffer.Count < k
-                            || DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))
-                            {
-                                expansionHeap.Push(neighbourId);
-                                resultHeap.Push(neighbourId);
-                                if (resultHeap.Buffer.Count > k)
-                                {
-                                    resultHeap.Pop();
-                                }
-                            }
+                            // the closest candidate is farther than farthest result
+                            break;
+                        }
 
-                            // update visited list
-                            ++visitedNodesCount;
-                            VisitedSet.Add(neighbourId);
+                        // expand candidate
+                        var neighboursIds = Core.Nodes[toExpandId][layer];
+                        for (int i = 0; i < neighboursIds.Count; ++i)
+                        {
+                            int neighbourId = neighboursIds[i];
+                            if (!VisitedSet.Contains(neighbourId))
+                            {
+                                // enqueue perspective neighbours to expansion list
+                                farthestResultId = resultHeap.Buffer[0];
+                                if (resultHeap.Buffer.Count < k
+                                || DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))
+                                {
+                                    expansionHeap.Push(neighbourId);
+                                    resultHeap.Push(neighbourId);
+                                    if (resultHeap.Buffer.Count > k)
+                                    {
+                                        resultHeap.Pop();
+                                    }
+                                }
+
+                                // update visited list
+                                ++visitedNodesCount;
+                                VisitedSet.Add(neighbourId);
+                            }
                         }
                     }
+
+                    ExpansionBuffer.Clear();
+                    VisitedSet.Clear();
+
+                    return visitedNodesCount;
                 }
-
-                ExpansionBuffer.Clear();
-                VisitedSet.Clear();
-
-                return visitedNodesCount;
+                catch
+                {
+                    //Throws if the collection changed, otherwise propagates the original exception
+                    GraphChangedException.ThrowIfChanged(ref version, versionAtStart);
+                    throw;
+                }
             }
         }
     }
