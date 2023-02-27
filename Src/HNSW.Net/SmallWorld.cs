@@ -7,6 +7,7 @@ namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
     using System.IO;
     using System.Linq;
@@ -159,7 +160,7 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to assign to the graph's verticies.</param>
         /// <param name="bytes">The serialized parameters and edges.</param>
-        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream)
+        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream, bool threadSafe = true)
         {
             var p0 = stream.Position;
             string hnswHeader;
@@ -187,7 +188,7 @@ namespace HNSW.Net
             //Overwrite previous InitialDistanceCacheSize parameter, so we don't waste time/memory allocating a distance cache for an already existing graph
             parameters.InitialDistanceCacheSize = 0;
 
-            var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
+            var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters, threadSafe: threadSafe);
             world.Graph.Deserialize(items, stream);
             return world;
         }
