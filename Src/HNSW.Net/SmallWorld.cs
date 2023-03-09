@@ -34,7 +34,7 @@ namespace HNSW.Net
         /// Gets the list of items currently held by the SmallWorld graph. 
         /// The list is not protected by any locks, and should only be used when it is known the graph won't change
         /// </summary>
-        public IReadOnlyList<TItem> UnsafeItems => Graph.GraphCore.Items;
+        public IReadOnlyList<TItem> UnsafeItems => Graph?.GraphCore?.Items;
 
         /// <summary>
         /// Gets a copy of the list of items currently held by the SmallWorld graph. 
@@ -58,7 +58,7 @@ namespace HNSW.Net
                 }
                 else
                 {
-                    return Graph.GraphCore.Items;
+                    return Graph?.GraphCore?.Items;
                 }
             }
         }
