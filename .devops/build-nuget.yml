@@ -45,5 +45,5 @@ steps:
     command: 'push'
     packagesToPush: '**/*.nupkg'
     nuGetFeedType: 'external'
-    publishFeedCredentials: 'nuget-curiosity'
+    publishFeedCredentials: 'nuget-curiosity-org'
   displayName: 'push nuget'
