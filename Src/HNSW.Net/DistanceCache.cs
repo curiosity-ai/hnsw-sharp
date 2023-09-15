@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 
 namespace HNSW.Net
 {
-    internal class DistanceCache<TDistance> where TDistance : struct
+    public static class DistanceCacheLimits
     {
         /// <summary>
         /// https://referencesource.microsoft.com/#mscorlib/system/array.cs,2d2b551eabe74985,references
@@ -17,7 +17,28 @@ namespace HNSW.Net
         /// 2^29 = 536870912
         /// 2^30 = 1073741824
         /// </summary>
-        private const int MaxArrayLength = 268435456; // 0x10000000;
+        public static int MaxArrayLength 
+        { 
+            get { return _maxArrayLength; }
+            set { _maxArrayLength = NextPowerOf2((uint)value); }
+        }
+
+        private static int NextPowerOf2(uint x)
+        {
+#if NET7_0_OR_GREATER
+            var v = System.Numerics.BitOperations.RoundUpToPowerOf2(x);
+            if (v > 0x10000000) return 0x10000000;
+            return (int)v;
+#else
+            return (int)Math.Pow(2, Math.Ceiling(Math.Log(x) / Math.Log(2)));
+#endif
+        }
+
+        private static int _maxArrayLength = 268_435_456; // 0x10000000;
+    }
+    internal class DistanceCache<TDistance> where TDistance : struct
+    {
+
 
         private TDistance[] values;
 
@@ -34,7 +55,8 @@ namespace HNSW.Net
             if(pointsCount <=0) { pointsCount = 1024; }
 
             long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
-            capacity = capacity < MaxArrayLength ? capacity : MaxArrayLength;
+            
+            capacity = capacity < DistanceCacheLimits.MaxArrayLength ? capacity : DistanceCacheLimits.MaxArrayLength;
 
             if (keys is null || capacity > keys.Length || overwrite)
             {
@@ -58,7 +80,7 @@ namespace HNSW.Net
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal TDistance GetValue(int fromId, int toId, Func<int,int,TDistance> getter)
+        internal TDistance GetOrCacheValue(int fromId, int toId, Func<int,int,TDistance> getter)
         {
             long key = MakeKey(fromId, toId);
             int hash = (int)(key & (keys.Length - 1));

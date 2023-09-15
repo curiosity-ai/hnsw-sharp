@@ -110,7 +110,7 @@ namespace HNSW.Net
                 DistanceCalculationsCount++;
                 if (DistanceCache is object)
                 {
-                    return DistanceCache.GetValue(fromId, toId, GetDistanceSkipCache);
+                    return DistanceCache.GetOrCacheValue(fromId, toId, GetDistanceSkipCache);
                 }
                 else
                 {
