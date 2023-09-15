@@ -67,7 +67,7 @@ namespace HNSW.Net
                 DistanceCalculationsCount = 0;
             }
 
-            internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, CancellationToken cancellationToken)
+            internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator)
             {
                 int newCount = items.Count;
 
@@ -81,7 +81,6 @@ namespace HNSW.Net
                 {
                     Nodes.Add(Algorithm.NewNode(id0 + id, RandomLayer(generator, Parameters.LevelLambda)));
                     newIDs.Add(id0 + id);
-                    cancellationToken.ThrowIfCancellationRequested();
                 }
                 return newIDs;
             }

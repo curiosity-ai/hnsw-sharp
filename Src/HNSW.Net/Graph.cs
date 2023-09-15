@@ -28,6 +28,8 @@ namespace HNSW.Net
 
         private Node? EntryPoint;
 
+        private long _version;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="Graph{TItem, TDistance}"/> class.
         /// </summary>
@@ -49,8 +51,7 @@ namespace HNSW.Net
         /// <param name="items">The items to insert.</param>
         /// <param name="generator">The random number generator to distribute nodes across layers.</param>
         /// <param name="progressReporter">Interface to report progress </param>
-        /// <param name="cancellationToken">Token to cancel adding items to the graph. The graph state will be corrupt if you cancel, and will need to be rebuilt from scratch.</param>
-        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter, CancellationToken cancellationToken)
+        internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter)
         {
             if (items is null || !items.Any()) { return Array.Empty<int>(); }
 
@@ -58,7 +59,7 @@ namespace HNSW.Net
 
             int startIndex = GraphCore.Items.Count;
 
-            var newIDs = GraphCore.AddItems(items, generator, cancellationToken);
+            var newIDs = GraphCore.AddItems(items, generator);
 
             var entryPoint = EntryPoint ?? GraphCore.Nodes[0];
 
@@ -68,7 +69,8 @@ namespace HNSW.Net
 
             for (int nodeId = startIndex; nodeId < GraphCore.Nodes.Count; ++nodeId)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                var versionNow = Interlocked.Increment(ref _version);
+
                 using (new ScopeLatencyTracker(GraphBuildEventSource.Instance?.GraphInsertNodeLatencyReporter))
                 {
                     /*
@@ -98,7 +100,7 @@ namespace HNSW.Net
                     var currentNodeTravelingCosts = new TravelingCosts<int, TDistance>(nodeDistance, nodeId);
                     for (int layer = bestPeer.MaxLayer; layer > currentNode.MaxLayer; --layer)
                     {
-                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1);
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1, ref _version, versionNow);
                         bestPeer = GraphCore.Nodes[neighboursIdsBuffer[0]];
                         neighboursIdsBuffer.Clear();
                     }
@@ -106,13 +108,16 @@ namespace HNSW.Net
                     // connecting new node to the small world
                     for (int layer = Math.Min(currentNode.MaxLayer, entryPoint.MaxLayer); layer >= 0; --layer)
                     {
-                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, Parameters.ConstructionPruning);
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, Parameters.ConstructionPruning, ref _version, versionNow);
                         var bestNeighboursIds = GraphCore.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
 
                         for (int i = 0; i < bestNeighboursIds.Count; ++i)
                         {
                             int newNeighbourId = bestNeighboursIds[i];
+                            versionNow = Interlocked.Increment(ref _version);
                             GraphCore.Algorithm.Connect(currentNode, GraphCore.Nodes[newNeighbourId], layer);
+                            
+                            versionNow = Interlocked.Increment(ref _version);
                             GraphCore.Algorithm.Connect(GraphCore.Nodes[newNeighbourId], currentNode, layer);
 
                             // if distance from newNode to newNeighbour is better than to bestPeer => update bestPeer
@@ -139,6 +144,7 @@ namespace HNSW.Net
 
             // construction is done
             EntryPoint = entryPoint;
+
             return newIDs;
         }
 
@@ -152,32 +158,61 @@ namespace HNSW.Net
         /// <returns>The list of the nearest neighbours.</returns>
         internal IList<SmallWorld<TItem, TDistance>.KNNSearchResult> KNearest(TItem destination, int k)
         {
-            using (new ScopeLatencyTracker(GraphSearchEventSource.Instance?.GraphKNearestLatencyReporter))
+            if (EntryPoint is null) return null;
+
+            int retries = 1_024;
+            while (true)
             {
-                // TODO: hack we know that destination id is -1.
-                TDistance RuntimeDistance(int x, int y)
+                var versionNow = Interlocked.Read(ref _version);
+
+                try
                 {
-                    int nodeId = x >= 0 ? x : y;
-                    return Distance(destination, GraphCore.Items[nodeId]);
+                    using (new ScopeLatencyTracker(GraphSearchEventSource.Instance?.GraphKNearestLatencyReporter))
+                    {
+                        // TODO: hack we know that destination id is -1.
+                        TDistance RuntimeDistance(int x, int y)
+                        {
+                            int nodeId = x >= 0 ? x : y;
+                            return Distance(destination, GraphCore.Items[nodeId]);
+                        }
+
+                        var bestPeer = EntryPoint.Value;
+                        var searcher = new Searcher(GraphCore);
+                        var destiantionTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
+                        var resultIds = new List<int>(k + 1);
+
+                        int visitedNodesCount = 0;
+                        for (int layer = EntryPoint.Value.MaxLayer; layer > 0; --layer)
+                        {
+                            visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1, ref _version, versionNow);
+                            bestPeer = GraphCore.Nodes[resultIds[0]];
+                            resultIds.Clear();
+                        }
+
+                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k, ref _version, versionNow);
+                        GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
+
+                        return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult(id, GraphCore.Items[id], RuntimeDistance(id, -1))).ToList();
+                    }
                 }
-
-                var bestPeer = EntryPoint.Value;
-                var searcher = new Searcher(GraphCore);
-                var destiantionTravelingCosts = new TravelingCosts<int, TDistance>(RuntimeDistance, -1);
-                var resultIds = new List<int>(k + 1);
-
-                int visitedNodesCount = 0;
-                for (int layer = EntryPoint.Value.MaxLayer; layer > 0; --layer)
+                catch (GraphChangedException)
                 {
-                    visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1);
-                    bestPeer = GraphCore.Nodes[resultIds[0]];
-                    resultIds.Clear();
+                    if(retries > 0)
+                    {
+                        retries--; 
+                        continue;
+                    }
+                    throw;
                 }
-
-                visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k);
-                GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
-
-                return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult(id, GraphCore.Items[id],RuntimeDistance(id, -1))).ToList();
+                catch(Exception e)
+                {
+                    if (retries > 0)
+                    {
+                        retries--;
+                        continue;
+                    }
+                    throw;
+                }
             }
         }
 

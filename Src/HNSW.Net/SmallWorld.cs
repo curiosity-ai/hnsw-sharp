@@ -7,6 +7,7 @@ namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
     using System.IO;
     using System.Linq;
@@ -27,13 +28,13 @@ namespace HNSW.Net
         private Graph<TItem, TDistance> Graph;
         private IProvideRandomValues Generator;
 
-        private ReaderWriterLockSlim LockGraph = new ReaderWriterLockSlim();
+        private ReaderWriterLockSlim _rwLock;
 
         /// <summary>
         /// Gets the list of items currently held by the SmallWorld graph. 
         /// The list is not protected by any locks, and should only be used when it is known the graph won't change
         /// </summary>
-        public IReadOnlyList<TItem> UnsafeItems => Graph.GraphCore.Items;
+        public IReadOnlyList<TItem> UnsafeItems => Graph?.GraphCore?.Items;
 
         /// <summary>
         /// Gets a copy of the list of items currently held by the SmallWorld graph. 
@@ -43,14 +44,21 @@ namespace HNSW.Net
         {
             get
             {
-                LockGraph.EnterReadLock();
-                try
+                if (_rwLock is object)
                 {
-                    return Graph.GraphCore.Items.ToList();
+                    _rwLock.EnterReadLock();
+                    try
+                    {
+                        return Graph.GraphCore.Items.ToList();
+                    }
+                    finally
+                    {
+                        _rwLock.ExitReadLock();
+                    }
                 }
-                finally
+                else
                 {
-                    LockGraph.ExitReadLock();
+                    return Graph?.GraphCore?.Items;
                 }
             }
         }
@@ -62,30 +70,29 @@ namespace HNSW.Net
         /// <param name="distance">The distance function to use in the small world.</param>
         /// <param name="generator">The random number generator for building graph.</param>
         /// <param name="parameters">Parameters of the algorithm.</param>
-        public SmallWorld(Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Parameters parameters)
+        public SmallWorld(Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Parameters parameters, bool threadSafe = true)
         {
             Distance = distance;
             Graph = new Graph<TItem, TDistance>(Distance, parameters);
             Generator = generator;
+            _rwLock = threadSafe ? new ReaderWriterLockSlim() : null;
         }
-
-
 
         /// <summary>
         /// Builds hnsw graph from the items.
         /// </summary>
         /// <param name="items">The items to connect into the graph.</param>
 
-        public IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProgressReporter progressReporter = null, CancellationToken cancellationToken = default)
+        public IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProgressReporter progressReporter = null)
         {
-            LockGraph.EnterWriteLock();
+            _rwLock?.EnterWriteLock();
             try
             {
-               return Graph.AddItems(items, Generator, progressReporter, cancellationToken);
+               return Graph.AddItems(items, Generator, progressReporter);
             }
             finally
             {
-                LockGraph.ExitWriteLock();
+                _rwLock?.ExitWriteLock();
             }
         }
 
@@ -97,14 +104,14 @@ namespace HNSW.Net
         /// <returns>The list of found nearest neighbours.</returns>
         public IList<KNNSearchResult> KNNSearch(TItem item, int k)
         {
-            LockGraph.EnterReadLock();
+            _rwLock?.EnterReadLock();
             try
             {
                 return Graph.KNearest(item, k);
             }
             finally
             {
-                LockGraph.ExitReadLock();
+                _rwLock?.ExitReadLock();
             }
         }
 
@@ -114,14 +121,14 @@ namespace HNSW.Net
         /// <param name="index">The index of the item</param>
         public TItem GetItem(int index)
         {
-            LockGraph.EnterReadLock();
+            _rwLock?.EnterReadLock();
             try
             {
                 return Items[index];
             }
             finally
             {
-                LockGraph.ExitReadLock();
+                _rwLock?.ExitReadLock();
             }
         }
 
@@ -135,7 +142,7 @@ namespace HNSW.Net
             {
                 throw new InvalidOperationException("The graph does not exist");
             }
-            LockGraph.EnterReadLock();
+            _rwLock?.EnterReadLock();
             try
             {
                 MessagePackBinary.WriteString(stream, SERIALIZATION_HEADER);
@@ -144,7 +151,7 @@ namespace HNSW.Net
             }
             finally
             {
-                LockGraph.ExitReadLock();
+                _rwLock?.ExitReadLock();
             }
         }
 
@@ -153,7 +160,7 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to assign to the graph's verticies.</param>
         /// <param name="bytes">The serialized parameters and edges.</param>
-        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream)
+        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream, bool threadSafe = true)
         {
             var p0 = stream.Position;
             string hnswHeader;
@@ -181,7 +188,7 @@ namespace HNSW.Net
             //Overwrite previous InitialDistanceCacheSize parameter, so we don't waste time/memory allocating a distance cache for an already existing graph
             parameters.InitialDistanceCacheSize = 0;
 
-            var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters);
+            var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters, threadSafe: threadSafe);
             world.Graph.Deserialize(items, stream);
             return world;
         }
