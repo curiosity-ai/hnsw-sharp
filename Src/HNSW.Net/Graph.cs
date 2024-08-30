@@ -100,7 +100,7 @@ namespace HNSW.Net
                     var currentNodeTravelingCosts = new TravelingCosts<int, TDistance>(nodeDistance, nodeId);
                     for (int layer = bestPeer.MaxLayer; layer > currentNode.MaxLayer; --layer)
                     {
-                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1, ref _version, versionNow);
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, 1, ref _version, versionNow, _ => true);
                         bestPeer = GraphCore.Nodes[neighboursIdsBuffer[0]];
                         neighboursIdsBuffer.Clear();
                     }
@@ -108,7 +108,7 @@ namespace HNSW.Net
                     // connecting new node to the small world
                     for (int layer = Math.Min(currentNode.MaxLayer, entryPoint.MaxLayer); layer >= 0; --layer)
                     {
-                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, Parameters.ConstructionPruning, ref _version, versionNow);
+                        searcher.RunKnnAtLayer(bestPeer.Id, currentNodeTravelingCosts, neighboursIdsBuffer, layer, Parameters.ConstructionPruning, ref _version, versionNow, _ => true);
                         var bestNeighboursIds = GraphCore.Algorithm.SelectBestForConnecting(neighboursIdsBuffer, currentNodeTravelingCosts, layer);
 
                         for (int i = 0; i < bestNeighboursIds.Count; ++i)
@@ -155,12 +155,28 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="destination">The given node to get the nearest neighbourhood for.</param>
         /// <param name="k">The size of the neighbourhood.</param>
+        /// <param name="filterItem">Filter results by ID that should be kept (return true to keep, false to exclude from results)</param>
         /// <returns>The list of the nearest neighbours.</returns>
-        internal IList<SmallWorld<TItem, TDistance>.KNNSearchResult> KNearest(TItem destination, int k)
+        internal IList<SmallWorld<TItem, TDistance>.KNNSearchResult> KNearest(TItem destination, int k, Func<TItem, bool> filterItem = null)
         {
             if (EntryPoint is null) return null;
 
+            Func<int, bool> keepResultInner = _ => true;
+
+            if (filterItem is object)
+            {
+                keepResultInner = (id) => filterItem(GraphCore.Items[id]);
+            }
+
             int retries = 1_024;
+
+            // TODO: hack we know that destination id is -1.
+            TDistance RuntimeDistance(int x, int y)
+            {
+                int nodeId = x >= 0 ? x : y;
+                return Distance(destination, GraphCore.Items[nodeId]);
+            }
+
             while (true)
             {
                 var versionNow = Interlocked.Read(ref _version);
@@ -169,12 +185,6 @@ namespace HNSW.Net
                 {
                     using (new ScopeLatencyTracker(GraphSearchEventSource.Instance?.GraphKNearestLatencyReporter))
                     {
-                        // TODO: hack we know that destination id is -1.
-                        TDistance RuntimeDistance(int x, int y)
-                        {
-                            int nodeId = x >= 0 ? x : y;
-                            return Distance(destination, GraphCore.Items[nodeId]);
-                        }
 
                         var bestPeer = EntryPoint.Value;
                         var searcher = new Searcher(GraphCore);
@@ -182,14 +192,16 @@ namespace HNSW.Net
                         var resultIds = new List<int>(k + 1);
 
                         int visitedNodesCount = 0;
+
                         for (int layer = EntryPoint.Value.MaxLayer; layer > 0; --layer)
                         {
-                            visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1, ref _version, versionNow);
+                            visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1, ref _version, versionNow, keepResultInner);
                             bestPeer = GraphCore.Nodes[resultIds[0]];
                             resultIds.Clear();
                         }
 
-                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k, ref _version, versionNow);
+                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, 0, k, ref _version, versionNow, keepResultInner);
+                        
                         GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
 
                         return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult(id, GraphCore.Items[id], RuntimeDistance(id, -1))).ToList();

@@ -5,6 +5,7 @@
 
 namespace HNSW.Net
 {
+    using System;
     using System.Collections.Generic;
 
     /// <content>
@@ -43,7 +44,7 @@ namespace HNSW.Net
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
             /// <param name="version">The version of the graph, will retry the search if the version changed</param>
             /// <returns>The number of expanded nodes during the run.</returns>
-            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart)
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -109,7 +110,12 @@ namespace HNSW.Net
                                 || DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))
                                 {
                                     expansionHeap.Push(neighbourId);
-                                    resultHeap.Push(neighbourId);
+                                    
+                                    if (keepResult(neighbourId))
+                                    {
+                                        resultHeap.Push(neighbourId);
+                                    }
+
                                     if (resultHeap.Buffer.Count > k)
                                     {
                                         resultHeap.Pop();
