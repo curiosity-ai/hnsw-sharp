@@ -102,12 +102,12 @@ namespace HNSW.Net
         /// <param name="item">The item to search nearest neighbours.</param>
         /// <param name="k">The number of nearest neighbours.</param>
         /// <returns>The list of found nearest neighbours.</returns>
-        public IList<KNNSearchResult> KNNSearch(TItem item, int k)
+        public IList<KNNSearchResult> KNNSearch(TItem item, int k, Func<TItem, bool> filterItem = null)
         {
             _rwLock?.EnterReadLock();
             try
             {
-                return Graph.KNearest(item, k);
+                return Graph.KNearest(item, k, filterItem);
             }
             finally
             {
