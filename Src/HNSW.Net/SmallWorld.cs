@@ -101,13 +101,15 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="item">The item to search nearest neighbours.</param>
         /// <param name="k">The number of nearest neighbours.</param>
+        /// <param name="filterItem">Filter results by ID that should be kept (return true to keep, false to exclude from results)</param>
+        /// <param name="cancellationToken">Cancellation Token for stopping the search when filtering is active</param>
         /// <returns>The list of found nearest neighbours.</returns>
-        public IList<KNNSearchResult> KNNSearch(TItem item, int k, Func<TItem, bool> filterItem = null)
+        public IList<KNNSearchResult> KNNSearch(TItem item, int k, Func<TItem, bool> filterItem = null, CancellationToken cancellationToken = default)
         {
             _rwLock?.EnterReadLock();
             try
             {
-                return Graph.KNearest(item, k, filterItem);
+                return Graph.KNearest(item, k, filterItem, cancellationToken);
             }
             finally
             {
