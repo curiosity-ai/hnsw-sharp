@@ -165,7 +165,14 @@ namespace HNSW.Net
 
             if (filterItem is object)
             {
-                keepResultInner = (id) => filterItem(GraphCore.Items[id]);
+                var keepResults = new Dictionary<int, bool>();
+                keepResultInner = (id) =>
+                {
+                    if (keepResults.TryGetValue(id, out var v)) return v;
+                    v = filterItem(GraphCore.Items[id]);
+                    keepResults[id] = v;
+                    return v;
+                };
             }
 
             int retries = 1_024;
@@ -196,7 +203,10 @@ namespace HNSW.Net
                         for (int layer = EntryPoint.Value.MaxLayer; layer > 0; --layer)
                         {
                             visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destiantionTravelingCosts, resultIds, layer, 1, ref _version, versionNow, keepResultInner);
-                            bestPeer = GraphCore.Nodes[resultIds[0]];
+                            if (resultIds.Count > 0)
+                            {
+                                bestPeer = GraphCore.Nodes[resultIds[0]];
+                            }
                             resultIds.Clear();
                         }
 

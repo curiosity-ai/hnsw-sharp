@@ -36,13 +36,12 @@ namespace HNSW.Net
 
         private static int _maxArrayLength = 268_435_456; // 0x10000000;
     }
+
     internal class DistanceCache<TDistance> where TDistance : struct
     {
+        private TDistance[] _values;
 
-
-        private TDistance[] values;
-
-        private long[] keys;
+        private long[] _keys;
 
         internal int HitCount;
 
@@ -52,30 +51,30 @@ namespace HNSW.Net
 
         internal void Resize(int pointsCount, bool overwrite)
         {
-            if(pointsCount <=0) { pointsCount = 1024; }
+            if (pointsCount <= 0) { pointsCount = 1024; }
 
             long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
             
             capacity = capacity < DistanceCacheLimits.MaxArrayLength ? capacity : DistanceCacheLimits.MaxArrayLength;
 
-            if (keys is null || capacity > keys.Length || overwrite)
+            if (_keys is null || capacity > _keys.Length || overwrite)
             {
                 int i0 = 0;
-                if (keys is null || overwrite)
+                if (_keys is null || overwrite)
                 {
-                    keys   = new long[(int)capacity];
-                    values = new TDistance[(int)capacity];
+                    _keys   = new long[(int)capacity];
+                    _values = new TDistance[(int)capacity];
                 }
                 else
                 {
-                    i0 = keys.Length;
-                    Array.Resize(ref keys,   (int)capacity);
-                    Array.Resize(ref values, (int)capacity);
+                    i0 = _keys.Length;
+                    Array.Resize(ref _keys,   (int)capacity);
+                    Array.Resize(ref _values, (int)capacity);
                 }
 
                 // TODO: may be there is a better way to warm up cache and force OS to allocate pages
-                keys.AsSpan().Slice(i0).Fill(-1);
-                values.AsSpan().Slice(i0).Fill(default);
+                _keys.AsSpan().Slice(i0).Fill(-1);
+                _values.AsSpan().Slice(i0).Fill(default);
             }
         }
 
@@ -83,18 +82,18 @@ namespace HNSW.Net
         internal TDistance GetOrCacheValue(int fromId, int toId, Func<int,int,TDistance> getter)
         {
             long key = MakeKey(fromId, toId);
-            int hash = (int)(key & (keys.Length - 1));
+            int hash = (int)(key & (_keys.Length - 1));
 
-            if (keys[hash] == key)
+            if (_keys[hash] == key)
             {
                 HitCount++;
-                return values[hash];
+                return _values[hash];
             }
             else
             {
                 var d = getter(fromId, toId);
-                keys[hash] = key;
-                values[hash] = d;
+                _keys[hash] = key;
+                _values[hash] = d;
                 return d;
             }
         }
@@ -103,9 +102,9 @@ namespace HNSW.Net
         private void SetValue(int fromId, int toId, TDistance distance)
         {
             long key = MakeKey(fromId, toId);
-            int hash = (int)(key & (keys.Length - 1));
-            keys[hash] = key;
-            values[hash] = distance;
+            int hash = (int)(key & (_keys.Length - 1));
+            _keys[hash] = key;
+            _values[hash] = distance;
         }
 
         /// <summary>

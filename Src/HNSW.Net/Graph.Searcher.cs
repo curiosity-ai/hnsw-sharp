@@ -73,10 +73,14 @@ namespace HNSW.Net
 
                 // prepare collections
                 // TODO: Optimize by providing buffers
-                var resultHeap = new BinaryHeap<int>(resultList, fartherIsOnTop);
+                var resultHeap    = new BinaryHeap<int>(resultList, fartherIsOnTop);
                 var expansionHeap = new BinaryHeap<int>(ExpansionBuffer, closerIsOnTop);
 
-                resultHeap.Push(entryPointId);
+                if (keepResult(entryPointId))
+                {
+                    resultHeap.Push(entryPointId);
+                }
+
                 expansionHeap.Push(entryPointId);
                 VisitedSet.Add(entryPointId);
 
@@ -90,8 +94,8 @@ namespace HNSW.Net
 
                         // get next candidate to check and expand
                         var toExpandId = expansionHeap.Pop();
-                        var farthestResultId = resultHeap.Buffer[0];
-                        if (DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
+                        var farthestResultId = resultHeap.Buffer.Count > 0 ? resultHeap.Buffer[0] : -1;
+                        if (farthestResultId > 0 && DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
                         {
                             // the closest candidate is farther than farthest result
                             break;
@@ -99,15 +103,16 @@ namespace HNSW.Net
 
                         // expand candidate
                         var neighboursIds = Core.Nodes[toExpandId][layer];
+
                         for (int i = 0; i < neighboursIds.Count; ++i)
                         {
                             int neighbourId = neighboursIds[i];
+
                             if (!VisitedSet.Contains(neighbourId))
                             {
                                 // enqueue perspective neighbours to expansion list
-                                farthestResultId = resultHeap.Buffer[0];
-                                if (resultHeap.Buffer.Count < k
-                                || DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))
+                                farthestResultId = resultHeap.Buffer.Count > 0 ? resultHeap.Buffer[0] : -1;
+                                if (farthestResultId< 0 || resultHeap.Buffer.Count < k || DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))
                                 {
                                     expansionHeap.Push(neighbourId);
                                     
@@ -134,7 +139,7 @@ namespace HNSW.Net
 
                     return visitedNodesCount;
                 }
-                catch
+                catch (Exception ex) 
                 {
                     //Throws if the collection changed, otherwise propagates the original exception
                     GraphChangedException.ThrowIfChanged(ref version, versionAtStart);

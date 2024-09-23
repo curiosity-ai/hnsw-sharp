@@ -65,6 +65,23 @@ namespace HNSW.Net.Tests
         /// <summary>
         /// Basic test for knn search - this test might fail sometimes, as the construction of the graph does not guarantee an exact answer
         /// </summary>
+        [TestMethod]
+        public void KNNSearchWithFilterTest()
+        {
+            var parameters = new SmallWorld<float[], float>.Parameters();
+            var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
+            graph.AddItems(vectors);
+
+            for (int i = 0; i < vectors.Count; ++i)
+            {
+                var result = graph.KNNSearch(vectors[i], 20, filterItem: v => false);
+                Assert.AreEqual(0, result.Count);
+            }
+        }
+
+        /// <summary>
+        /// Basic test for knn search - this test might fail sometimes, as the construction of the graph does not guarantee an exact answer
+        /// </summary>
         [DataTestMethod]
         [DataRow(false,false)]
         [DataRow(false,true)]
