@@ -112,7 +112,7 @@ namespace HNSW.Net
                             {
                                 // enqueue perspective neighbours to expansion list
                                 farthestResultId = resultHeap.Buffer.Count > 0 ? resultHeap.Buffer[0] : -1;
-                                if (farthestResultId< 0 || resultHeap.Buffer.Count < k || DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId)))
+                                if (resultHeap.Buffer.Count < k || (farthestResultId >= 0 && DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId))))
                                 {
                                     expansionHeap.Push(neighbourId);
                                     

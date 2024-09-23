@@ -226,12 +226,15 @@ namespace HNSW.Net
                     }
                     throw;
                 }
-                catch(Exception e)
+                catch(Exception)
                 {
-                    if (retries > 0)
+                    if (versionNow != Interlocked.Read(ref _version))
                     {
-                        retries--;
-                        continue;
+                        if (retries > 0)
+                        {
+                            retries--;
+                            continue;
+                        }
                     }
                     throw;
                 }
