@@ -65,7 +65,7 @@ for (int repeat = 0; repeat < 2; repeat++)
         {
             using (var cts = new CancellationTokenSource())
             {
-                cts.CancelAfter(TimeSpan.FromMilliseconds(1));
+                //cts.CancelAfter(TimeSpan.FromMilliseconds(1));
                 var results = world.KNNSearch(v, 50, v => v.ID % 100 < (100 - p * 10), cts.Token);
             }
         }
