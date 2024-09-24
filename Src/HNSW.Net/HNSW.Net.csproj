@@ -2,14 +2,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netstandard2.1;net7.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netstandard2.1;net7.0;net8.0</TargetFrameworks>
     <Platforms>AnyCPU</Platforms>
     <Company>Curiosity GmbH</Company>
     <PackageId>HNSW</PackageId>
     <Authors>Curiosity GmbH and original HSNW.Net authors</Authors>
     <Product>HNSW</Product>
-    <Description>C# library for fast approximate nearest neighbours search using Hierarchical Navigable Small World graphs.
-Fork from original at https://github.com/microsoft/HNSW.Net, adds support for incremental build and MessagePack serialization.</Description>
+    <Description>C# library for fast approximate nearest neighbours search using Hierarchical Navigable Small World graphs. Fork from original at https://github.com/microsoft/HNSW.Net, adds support for incremental build and MessagePack serialization.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>(c) Copyright 2019 Curiosity GmbH, Copyright (c) Microsoft Corporation</Copyright>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>

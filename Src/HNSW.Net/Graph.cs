@@ -170,10 +170,6 @@ namespace HNSW.Net
                 keepResultInner = (id) =>
                 {
                     if (keepResults.TryGetValue(id, out var v)) return v;
-                    
-                    // We need to add a cancellation token when filtering, because the graph can easily be excessively traversed
-                    // TODO: Investigate if there's a better way to handle this
-                    if (cancellationToken.IsCancellationRequested) return false;
                     v = filterItem(GraphCore.Items[id]);
                     keepResults[id] = v;
                     return v;
@@ -206,23 +202,23 @@ namespace HNSW.Net
 
                         for (int layer = EntryPoint.Value.MaxLayer; layer > 0; --layer)
                         {
-                            visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, layer, 1, ref _version, versionNow, keepResultInner);
-                            if (resultIds.Count > 0)
-                            {
-                                bestPeer = GraphCore.Nodes[resultIds[0]];
+                            visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, layer, 1, ref _version, versionNow, keepResultInner, cancellationToken);
 
-                            }
-                            
                             if (cancellationToken.IsCancellationRequested)
                             {
                                 //Return best so far - TODO: Investigate if this assumption is correct
                                 return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult(id, GraphCore.Items[id], RuntimeDistance(id, -1))).ToList();
                             }
 
+                            if (resultIds.Count > 0)
+                            {
+                                bestPeer = GraphCore.Nodes[resultIds[0]];
+                            }
+
                             resultIds.Clear();
                         }
 
-                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, k, ref _version, versionNow, keepResultInner);
+                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, k, ref _version, versionNow, keepResultInner, cancellationToken);
                         
                         GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
 

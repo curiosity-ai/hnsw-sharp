@@ -7,6 +7,7 @@ namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
 
     /// <content>
     /// The implementation of knn search.
@@ -44,7 +45,7 @@ namespace HNSW.Net
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
             /// <param name="version">The version of the graph, will retry the search if the version changed</param>
             /// <returns>The number of expanded nodes during the run.</returns>
-            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult)
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult, CancellationToken cancellationToken = default)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -90,6 +91,11 @@ namespace HNSW.Net
                     int visitedNodesCount = 1;
                     while (expansionHeap.Buffer.Count > 0)
                     {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return visitedNodesCount;
+                        }
+
                         GraphChangedException.ThrowIfChanged(ref version, versionAtStart);
 
                         // get next candidate to check and expand
@@ -106,6 +112,11 @@ namespace HNSW.Net
 
                         for (int i = 0; i < neighboursIds.Count; ++i)
                         {
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                return visitedNodesCount;
+                            }
+
                             int neighbourId = neighboursIds[i];
 
                             if (!VisitedSet.Contains(neighbourId))
@@ -137,6 +148,7 @@ namespace HNSW.Net
                     ExpansionBuffer.Clear();
                     VisitedSet.Clear();
 
+                    
                     return visitedNodesCount;
                 }
                 catch (Exception ex) 
