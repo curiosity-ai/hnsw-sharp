@@ -11,7 +11,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HNSW.Net.Demo", "HNSW.Net.D
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".azuredevops", ".azuredevops", "{07C754D2-86A3-46F1-B78D-9C81F8974996}"
 	ProjectSection(SolutionItems) = preProject
-		..\build-nuget.yml = ..\build-nuget.yml
+		..\.devops\build-nuget.yml = ..\.devops\build-nuget.yml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HNSW.Net.TestFiltering", "HNSW.Net.TestFiltering\HNSW.Net.TestFiltering.csproj", "{3D3E2F64-B88B-4E53-B9DD-27870B6D98AA}"

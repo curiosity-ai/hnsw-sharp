@@ -2,9 +2,9 @@
 using MessagePack;
 using System.Diagnostics;
 
-int SampleSize = 10_000;
+int SampleSize = 100_000;
 int SampleIncrSize = 100;
-int Dimensions = 8;
+int Dimensions = 128;
 
 var world = new SmallWorld<VectorID, float>(VectorID.Distance, DefaultRandomGenerator.Instance, new () { EnableDistanceCacheForConstruction = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true }, threadSafe: false);
 
@@ -65,7 +65,7 @@ for (int repeat = 0; repeat < 2; repeat++)
         {
             using (var cts = new CancellationTokenSource())
             {
-                //cts.CancelAfter(TimeSpan.FromMilliseconds(1));
+                cts.CancelAfter(TimeSpan.FromMilliseconds(1));
                 var results = world.KNNSearch(v, 50, v => v.ID % 100 < (100 - p * 10), cts.Token);
             }
         }

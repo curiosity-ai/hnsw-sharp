@@ -1,6 +1,7 @@
 variables:
   project:  './Src/HNSW.Net/HNSW.Net.csproj'
   buildConfiguration: 'Release'
+  targetVersion: yy.M.$(build.buildId)
 
 trigger:
 - master
@@ -11,11 +12,24 @@ pool:
 steps:
 - task: NuGetToolInstaller@0
 
+
+- task: PowerShell@2
+  displayName: 'Create CalVer Version'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $dottedDate = (Get-Date).ToString("yy.M")
+      $buildID = $($env:BUILD_BUILDID) 
+      $newTargetVersion = "$dottedDate.$buildID"
+      Write-Host "##vso[task.setvariable variable=targetVersion;]$newTargetVersion"
+      Write-Host "Updated targetVersion to '$newTargetVersion'"
+
+
 - task: UseDotNet@2
-  displayName: 'Use .NET 7.0 SDK'
+  displayName: 'Use .NET 8.0 SDK'
   inputs:
     packageType: sdk
-    version: 7.x
+    version: 8.x
     includePreviewVersions: false
     installationPath: $(Agent.ToolsDirectory)\dotnet
 
@@ -29,7 +43,7 @@ steps:
   inputs:
     command: 'build'
     projects: '$(project)'
-    arguments: '-c $(buildConfiguration) /p:Version=1.0.$(build.buildId) /p:LangVersion=latest'
+    arguments: '-c $(buildConfiguration) /p:Version=$(targetVersion) /p:LangVersion=latest'
 
 - task: DotNetCoreCLI@2
   inputs:
@@ -37,7 +51,7 @@ steps:
     packagesToPack: '$(project)'
     versioningScheme: 'off'
     configuration: '$(buildConfiguration)'
-    buildProperties: 'Version="1.0.$(build.buildId)";LangVersion="latest"'
+    buildProperties: 'Version="$(targetVersion)";LangVersion="latest"'
     nobuild: true
 
 - task: NuGetCommand@2
