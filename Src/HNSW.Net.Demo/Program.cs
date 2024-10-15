@@ -14,6 +14,7 @@ namespace HNSW.Net.Demo
     using System.Runtime.CompilerServices;
     using System.Runtime.Intrinsics;
     using System.Runtime.Serialization.Formatters.Binary;
+    using System.Text.Json;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -121,11 +122,8 @@ namespace HNSW.Net.Demo
 
             Console.Write($"Saving HNSW graph to '${Path.Combine(Directory.GetCurrentDirectory(), pathPrefix)}'... ");
             clock = Stopwatch.StartNew();
-            BinaryFormatter formatter = new BinaryFormatter();
             MemoryStream sampleVectorsStream = new MemoryStream();
-#pragma warning disable SYSLIB0011 // Type or member is obsolete
-            formatter.Serialize(sampleVectorsStream, sampleVectors);
-#pragma warning restore SYSLIB0011 // Type or member is obsolete
+            JsonSerializer.Serialize(sampleVectorsStream, sampleVectors);
             File.WriteAllBytes($"{pathPrefix}.{VectorsPathSuffix}", sampleVectorsStream.ToArray());
 
 
@@ -143,10 +141,7 @@ namespace HNSW.Net.Demo
 
             Console.Write("Loading HNSW graph... ");
             clock = Stopwatch.StartNew();
-            BinaryFormatter formatter = new BinaryFormatter();
-#pragma warning disable SYSLIB0011 // Type or member is obsolete
-            var sampleVectors = (List<float[]>)formatter.Deserialize(new MemoryStream(File.ReadAllBytes($"{pathPrefix}.{VectorsPathSuffix}")));
-#pragma warning restore SYSLIB0011 // Type or member is obsolete
+            var sampleVectors = JsonSerializer.Deserialize<List<float[]>>(File.ReadAllText($"{pathPrefix}.{VectorsPathSuffix}"));
             SmallWorld<float[], float> world;
             using (var f = File.OpenRead($"{pathPrefix}.{GraphPathSuffix}"))
             {
