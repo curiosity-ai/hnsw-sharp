@@ -34,6 +34,12 @@ public class MetricsEventListener : EventListener
             return;
         }
 
-        Console.WriteLine($"[{counterData["Name"]:n1}]: Avg={counterData["Mean"]:n1}; SD={counterData["StandardDeviation"]:n1}; Count={counterData["Count"]}");
+        const string emptyVal = "N/A";
+        var name = counterData.TryGetValue("Name", out object _name) ? _name.ToString() : emptyVal;
+        var avg = counterData.TryGetValue("Mean", out object mean) ? mean.ToString() : emptyVal;
+        var sd = counterData.TryGetValue("StandardDeviation", out object standardDev) ? standardDev.ToString() : emptyVal;
+        var ct = counterData.TryGetValue("Count", out object count) ? count.ToString() : emptyVal;
+
+        Console.WriteLine($"[{name:n1}]: Avg={avg:n1}; SD={sd:n1}; Count={ct}");
     }
 }
