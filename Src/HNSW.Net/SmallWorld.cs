@@ -162,7 +162,7 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The items to assign to the graph's verticies.</param>
         /// <param name="bytes">The serialized parameters and edges.</param>
-        public static SmallWorld<TItem, TDistance> DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream, bool threadSafe = true)
+        public static (SmallWorld<TItem, TDistance> Graph, TItem[] ItemsNotInGraph) DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream, bool threadSafe = true)
         {
             var p0 = stream.Position;
             string hnswHeader;
@@ -191,8 +191,8 @@ namespace HNSW.Net
             parameters.InitialDistanceCacheSize = 0;
 
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters, threadSafe: threadSafe);
-            world.Graph.Deserialize(items, stream);
-            return world;
+            var remainingItems = world.Graph.Deserialize(items, stream);
+            return (world, remainingItems);
         }
 
         /// <summary>

@@ -139,7 +139,47 @@ namespace HNSW.Net.Tests
 
             var copy = SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, stream);
 
-            Assert.AreEqual(original, copy.Print());
+            Assert.AreEqual(original, copy.Graph.Print());
+        }
+
+        /// <summary>
+        /// Serialization deserialization tests.
+        /// </summary>
+        [TestMethod]
+        public void SerializeDeserializeWithRemainingItemsTest()
+        {
+            byte[] buffer;
+            string original;
+            int rng_state;
+            var rng = new RewindableRandomNumberGenerator();
+
+            // restrict scope of original graph
+            var stream = new MemoryStream();
+            {
+                var parameters = new SmallWorld<float[], float>.Parameters()
+                {
+                    M = 15,
+                    LevelLambda = 1 / Math.Log(15),
+                };
+                int itemsToLeaveBehindOnSerialization = (int)(vectors.Count / 2);
+                
+                var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, rng, parameters);
+                graph.AddItems(vectors.Take(itemsToLeaveBehindOnSerialization).ToArray());
+
+                graph.SerializeGraph(stream);
+                rng_state = rng.GetState();
+                graph.AddItems(vectors.Skip(itemsToLeaveBehindOnSerialization).ToArray());
+                rng.RewindTo(rng_state);
+
+                original = graph.Print();
+            }
+            stream.Position = 0;
+
+            var copy = SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, rng, stream);
+
+            copy.Graph.AddItems(copy.ItemsNotInGraph);
+
+            Assert.AreEqual(original, copy.Graph.Print());
         }
     }
 }

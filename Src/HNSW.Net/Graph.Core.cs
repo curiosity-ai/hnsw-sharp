@@ -8,6 +8,7 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Linq;
     using System.Runtime.CompilerServices;
     using System.Threading;
     using MessagePack;
@@ -95,12 +96,14 @@ namespace HNSW.Net
                 MessagePackSerializer.Serialize(stream, Nodes);
             }
 
-            internal void Deserialize(IReadOnlyList<TItem> items, Stream stream)
+            internal TItem[] Deserialize(IReadOnlyList<TItem> items, Stream stream)
             {
                 // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
                 //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
                 Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream);
-                Items.AddRange(items);
+                var remainingItems = items.Skip(Nodes.Count).ToArray();
+                Items.AddRange(items.Take(Nodes.Count));
+                return remainingItems;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

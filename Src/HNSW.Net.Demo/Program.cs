@@ -150,7 +150,7 @@ namespace HNSW.Net.Demo
             SmallWorld<float[], float> world;
             using (var f = File.OpenRead($"{pathPrefix}.{GraphPathSuffix}"))
             {
-                world = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, f);
+                (world, _) = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, f);
             }
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
 

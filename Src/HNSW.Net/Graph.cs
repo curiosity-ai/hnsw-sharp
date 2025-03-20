@@ -264,15 +264,16 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="items">The underlying items.</param>
         /// <param name="bytes">The serialized edges.</param>
-        internal void Deserialize(IReadOnlyList<TItem> items, Stream stream)
+        internal TItem[] Deserialize(IReadOnlyList<TItem> items, Stream stream)
         {
             // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
             //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
 
             var core = new Core(Distance, Parameters);
-            core.Deserialize(items, stream);
+            var remainingItems = core.Deserialize(items, stream);
             EntryPoint = MessagePackSerializer.Deserialize<Node>(stream);
             GraphCore = core;
+            return remainingItems;
         }
 
         /// <summary>

@@ -21,7 +21,7 @@ if (File.Exists(fileName))
 
     using (var f = File.OpenRead(fileName))
     {
-        world = SmallWorld<VectorID, float>.DeserializeGraph(vectors, VectorID.Distance, DefaultRandomGenerator.Instance, f, false);
+        (world, _) = SmallWorld<VectorID, float>.DeserializeGraph(vectors, VectorID.Distance, DefaultRandomGenerator.Instance, f, false);
     }
 }
 else
