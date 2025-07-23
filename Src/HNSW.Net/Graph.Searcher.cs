@@ -74,8 +74,8 @@ namespace HNSW.Net
 
                 // prepare collections
                 // TODO: Optimize by providing buffers
-                var resultHeap    = new BinaryHeap<int>(resultList, fartherIsOnTop);
-                var expansionHeap = new BinaryHeap<int>(ExpansionBuffer, closerIsOnTop);
+                var resultHeap    = new BinaryHeap(resultList, fartherIsOnTop);
+                var expansionHeap = new BinaryHeap(ExpansionBuffer, closerIsOnTop);
 
                 if (keepResult(entryPointId))
                 {
@@ -108,16 +108,14 @@ namespace HNSW.Net
                         }
 
                         // expand candidate
-                        var neighboursIds = Core.Nodes[toExpandId][layer];
-
-                        for (int i = 0; i < neighboursIds.Count; ++i)
+                        var neighboursIds = Core.Nodes[toExpandId].EnumerateLayer(layer);
+                        
+                        foreach(var neighbourId in neighboursIds) 
                         {
                             if (cancellationToken.IsCancellationRequested)
                             {
                                 return visitedNodesCount;
                             }
-
-                            int neighbourId = neighboursIds[i];
 
                             if (!VisitedSet.Contains(neighbourId))
                             {

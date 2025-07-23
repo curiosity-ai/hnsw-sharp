@@ -56,9 +56,9 @@ namespace HNSW.Net
 
                 var layerM = GetM(layer);
 
-                var resultHeap = new BinaryHeap<int>(new List<int>(layerM + 1), fartherIsOnTop);
-                var candidatesHeap = new BinaryHeap<int>(candidatesIds, closerIsOnTop);
-
+                var resultHeap     = new BinaryHeap(new List<int>(layerM + 1), fartherIsOnTop);
+                var candidatesHeap = new BinaryHeap(candidatesIds, closerIsOnTop);
+                var keepPrunedConnections = GraphCore.Parameters.KeepPrunedConnections;
                 // expand candidates option is enabled
                 if (GraphCore.Parameters.ExpandBestSelection)
                 {
@@ -66,7 +66,7 @@ namespace HNSW.Net
                     var toAdd = new HashSet<int>();
                     foreach (var candidateId in candidatesHeap.Buffer)
                     {
-                        var candidateNeighborsIDs = GraphCore.Nodes[candidateId][layer];
+                        var candidateNeighborsIDs = GraphCore.Nodes[candidateId].EnumerateLayer(layer);
                         foreach (var candidateNeighbourId in candidateNeighborsIDs)
                         {
                             if (!visited.Contains(candidateNeighbourId))
@@ -83,26 +83,26 @@ namespace HNSW.Net
                 }
 
                 // main stage of moving candidates to result
-                var discardedHeap = new BinaryHeap<int>(new List<int>(candidatesHeap.Buffer.Count), closerIsOnTop);
-                while (candidatesHeap.Buffer.Any() && resultHeap.Buffer.Count < layerM)
+                var discardedHeap = new BinaryHeap(new List<int>(candidatesHeap.Buffer.Count), closerIsOnTop);
+                while (candidatesHeap.Buffer.Count > 0 && resultHeap.Buffer.Count < layerM)
                 {
                     var candidateId = candidatesHeap.Pop();
                     var farestResultId = resultHeap.Buffer.FirstOrDefault();
 
-                    if (!resultHeap.Buffer.Any() || DistanceUtils.LowerThan(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
+                    if (resultHeap.Buffer.Count == 0 || DistanceUtils.LowerThan(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
                     {
                         resultHeap.Push(candidateId);
                     }
-                    else if (GraphCore.Parameters.KeepPrunedConnections)
+                    else if (keepPrunedConnections)
                     {
                         discardedHeap.Push(candidateId);
                     }
                 }
 
                 // keep pruned option is enabled
-                if (GraphCore.Parameters.KeepPrunedConnections)
+                if (keepPrunedConnections)
                 {
-                    while (discardedHeap.Buffer.Any() && resultHeap.Buffer.Count < layerM)
+                    while (discardedHeap.Buffer.Count > 0 && resultHeap.Buffer.Count < layerM)
                     {
                         resultHeap.Push(discardedHeap.Pop());
                     }

@@ -10,6 +10,7 @@ namespace HNSW.Net
     using System.IO;
     using System.Linq;
     using System.Runtime.CompilerServices;
+    using System.Runtime.InteropServices;
     using System.Threading;
     using MessagePack;
 
@@ -96,11 +97,44 @@ namespace HNSW.Net
                 MessagePackSerializer.Serialize(stream, Nodes);
             }
 
-            internal TItem[] Deserialize(IReadOnlyList<TItem> items, Stream stream)
+            internal bool NeedsOptimization()
+            {
+                if (Nodes.Count == 0) return false;
+
+                int notCached = 0;
+                foreach (var n in Nodes)
+                {
+                    if(!n.IsCached)
+                    {
+                        notCached++;
+                    }
+                }
+
+                return notCached > 1000 && notCached > (0.1 * Nodes.Count);
+            }
+            internal void Optimize(CachedNodeData cachedNodeData)
+            {
+                var nodesSpan = CollectionsMarshal.AsSpan(Nodes);
+
+                for (int i = 0; i < nodesSpan.Length; i++)
+                {
+                    Node.FlattenToCache(ref nodesSpan[i], cachedNodeData);
+                }
+            }
+
+            internal TItem[] Deserialize(IReadOnlyList<TItem> items, Stream stream, CachedNodeData cachedNodeData)
             {
                 // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
                 //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
                 Nodes = MessagePackSerializer.Deserialize<List<Node>>(stream);
+                
+                var nodesSpan = CollectionsMarshal.AsSpan(Nodes);
+
+                for (int i = 0; i < nodesSpan.Length; i++)
+                {
+                    Node.FlattenToCache(ref nodesSpan[i], cachedNodeData);
+                }
+
                 var remainingItems = items.Skip(Nodes.Count).ToArray();
                 Items.AddRange(items.Take(Nodes.Count));
                 return remainingItems;

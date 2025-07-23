@@ -14,6 +14,7 @@ namespace HNSW.Net
 
     using static HNSW.Net.EventSources;
     using System.Threading;
+    using System.Runtime.InteropServices;
 
     /// <summary>
     /// The implementation of a hierarchical small world graph.
@@ -25,6 +26,7 @@ namespace HNSW.Net
         private readonly Func<TItem, TItem, TDistance> Distance;
 
         internal Core GraphCore;
+        private CachedNodeData _cachedNodeData = null;
 
         private Node? EntryPoint;
 
@@ -53,7 +55,7 @@ namespace HNSW.Net
         /// <param name="progressReporter">Interface to report progress </param>
         internal IReadOnlyList<int> AddItems(IReadOnlyList<TItem> items, IProvideRandomValues generator, IProgressReporter progressReporter)
         {
-            if (items is null || !items.Any()) { return Array.Empty<int>(); }
+            if (items is null || items.Count == 0) { return Array.Empty<int>(); }
 
             GraphCore = GraphCore ?? new Core(Distance, Parameters);
 
@@ -115,10 +117,10 @@ namespace HNSW.Net
                         {
                             int newNeighbourId = bestNeighboursIds[i];
                             versionNow = Interlocked.Increment(ref _version);
-                            GraphCore.Algorithm.Connect(currentNode, GraphCore.Nodes[newNeighbourId], layer);
+                            GraphCore.Algorithm.Connect(ref currentNode, ref CollectionsMarshal.AsSpan(GraphCore.Nodes)[newNeighbourId], layer);
                             
                             versionNow = Interlocked.Increment(ref _version);
-                            GraphCore.Algorithm.Connect(GraphCore.Nodes[newNeighbourId], currentNode, layer);
+                            GraphCore.Algorithm.Connect(ref CollectionsMarshal.AsSpan(GraphCore.Nodes)[newNeighbourId], ref currentNode, layer);
 
                             // if distance from newNode to newNeighbour is better than to bestPeer => update bestPeer
                             if (DistanceUtils.LowerThan(currentNodeTravelingCosts.From(newNeighbourId), currentNodeTravelingCosts.From(bestPeer.Id)))
@@ -260,7 +262,7 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Deserilaizes graph edges and assigns nodes to the items.
+        /// Deserializes graph edges and assigns nodes to the items.
         /// </summary>
         /// <param name="items">The underlying items.</param>
         /// <param name="bytes">The serialized edges.</param>
@@ -268,12 +270,24 @@ namespace HNSW.Net
         {
             // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
             //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
-
+            _cachedNodeData = new CachedNodeData();
             var core = new Core(Distance, Parameters);
-            var remainingItems = core.Deserialize(items, stream);
-            EntryPoint = MessagePackSerializer.Deserialize<Node>(stream);
+            var remainingItems = core.Deserialize(items, stream, _cachedNodeData);
+            var entryPoint = MessagePackSerializer.Deserialize<Node>(stream);
+            Node.FlattenToCache(ref entryPoint, _cachedNodeData);
+            EntryPoint = entryPoint;
             GraphCore = core;
             return remainingItems;
+        }
+
+        internal void OptimizeIfNeeded(bool force)
+        {
+            if (force || GraphCore.NeedsOptimization())
+            {
+                var newCache = new CachedNodeData();
+                GraphCore.Optimize(newCache);
+                _cachedNodeData = newCache;
+            }
         }
 
         /// <summary>
@@ -288,7 +302,7 @@ namespace HNSW.Net
                 buffer.AppendLine($"[LEVEL {layer}]");
                 BFS(GraphCore, EntryPoint.Value, layer, (node) =>
                 {
-                    var neighbours = string.Join(", ", node[layer]);
+                    var neighbours = string.Join(", ", node.EnumerateLayer(layer).ToArray());
                     buffer.AppendLine($"({node.Id}) -> {{{neighbours}}}");
                 });
 

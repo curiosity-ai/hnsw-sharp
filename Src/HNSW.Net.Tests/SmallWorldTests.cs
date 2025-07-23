@@ -87,7 +87,7 @@ namespace HNSW.Net.Tests
         [DataRow(false,true)]
         [DataRow(true, false)]
         [DataRow(true, true)]
-        public void KNNSearchTestAlgorithm4(bool expandBestSelection, bool keepPrunedConnections )
+        public void KNNSearchTestAlgorithm4(bool expandBestSelection, bool keepPrunedConnections)
         {
             var parameters = new SmallWorld<float[], float>.Parameters() { NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, ExpandBestSelection = expandBestSelection, KeepPrunedConnections = keepPrunedConnections };
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
@@ -107,7 +107,7 @@ namespace HNSW.Net.Tests
                 }
                 maxError = Math.Max(maxError, best.Distance);
             }
-            Assert.AreEqual(0, bestWrong);
+            Assert.AreEqual(0, 100f * bestWrong / vectors.Count); //Percentage of failed cases
             Assert.AreEqual(0, maxError, FloatError);
         }
 

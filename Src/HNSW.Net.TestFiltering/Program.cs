@@ -6,7 +6,7 @@ int SampleSize = 100_000;
 int SampleIncrSize = 100;
 int Dimensions = 128;
 
-var world = new SmallWorld<VectorID, float>(VectorID.Distance, DefaultRandomGenerator.Instance, new () { EnableDistanceCacheForConstruction = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true }, threadSafe: false);
+var world = new SmallWorld<VectorID, float>(VectorID.Distance, DefaultRandomGenerator.Instance, new () { EnableDistanceCacheForConstruction = true, InitialDistanceCacheSize = SampleSize * 10, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true }, threadSafe: false);
 
 Console.WriteLine($"Creating {SampleSize:n0} vectors");
 List<VectorID> vectors;

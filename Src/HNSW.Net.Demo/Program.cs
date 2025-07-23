@@ -21,7 +21,7 @@ namespace HNSW.Net.Demo
 
     public static partial class Program
     {
-        private const int SampleSize = 500;
+        private const int SampleSize = 2000;
         private const int SampleIncrSize = 100;
         private const int TestSize = 10 * SampleSize;
         private const int Dimensionality = 128;
@@ -30,7 +30,7 @@ namespace HNSW.Net.Demo
 
         public static async Task Main()
         {
-            await MultithreadAddAndReadAsync();
+            //await MultithreadAddAndReadAsync();
             BuildAndSave("random");
             LoadAndSearch("random");
         }
@@ -113,21 +113,18 @@ namespace HNSW.Net.Demo
                 clock = Stopwatch.StartNew();
                 for(int i = 0; i < (SampleSize / SampleIncrSize); i++)
                 {
+                    var innerClock = Stopwatch.StartNew();
                     world.AddItems(sampleVectors.Skip(i * SampleIncrSize).Take(SampleIncrSize).ToArray());
-                    Console.WriteLine($"\nAt {i+1} of {SampleSize / SampleIncrSize}  Elapsed: {clock.ElapsedMilliseconds} ms.\n");
+                    Console.WriteLine($"\nAt {i+1} of {SampleSize / SampleIncrSize}  Elapsed: {innerClock.ElapsedMilliseconds} ms.\n");
                 }
                 Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
             }
 
             Console.Write($"Saving HNSW graph to '${Path.Combine(Directory.GetCurrentDirectory(), pathPrefix)}'... ");
             clock = Stopwatch.StartNew();
-            BinaryFormatter formatter = new BinaryFormatter();
             MemoryStream sampleVectorsStream = new MemoryStream();
-#pragma warning disable SYSLIB0011 // Type or member is obsolete
-            formatter.Serialize(sampleVectorsStream, sampleVectors);
-#pragma warning restore SYSLIB0011 // Type or member is obsolete
+            MessagePack.MessagePackSerializer.Serialize(sampleVectorsStream, sampleVectors);
             File.WriteAllBytes($"{pathPrefix}.{VectorsPathSuffix}", sampleVectorsStream.ToArray());
-
 
             using (var f = File.Open($"{pathPrefix}.{GraphPathSuffix}", FileMode.Create))
             {
@@ -143,15 +140,15 @@ namespace HNSW.Net.Demo
 
             Console.Write("Loading HNSW graph... ");
             clock = Stopwatch.StartNew();
-            BinaryFormatter formatter = new BinaryFormatter();
-#pragma warning disable SYSLIB0011 // Type or member is obsolete
-            var sampleVectors = (List<float[]>)formatter.Deserialize(new MemoryStream(File.ReadAllBytes($"{pathPrefix}.{VectorsPathSuffix}")));
-#pragma warning restore SYSLIB0011 // Type or member is obsolete
+            var sampleVectors = MessagePack.MessagePackSerializer.Deserialize<List<float[]>>(new MemoryStream(File.ReadAllBytes($"{pathPrefix}.{VectorsPathSuffix}")));
             SmallWorld<float[], float> world;
             using (var f = File.OpenRead($"{pathPrefix}.{GraphPathSuffix}"))
             {
                 (world, _) = SmallWorld<float[], float>.DeserializeGraph(sampleVectors, CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, f);
             }
+
+            world.OptimizeIfNeeded(force:true);
+
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
 
             Console.Write($"Generating {TestSize} test vectos... ");

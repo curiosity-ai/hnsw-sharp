@@ -22,14 +22,14 @@ namespace HNSW.Net.Tests
         {
             // Basic tests
             {
-                var heap = new BinaryHeap<int>(Enumerable.Empty<int>().ToList());
+                var heap = new BinaryHeap(Enumerable.Empty<int>().ToList());
                 Assert.IsFalse(heap.Buffer.Any());
 
-                heap = new BinaryHeap<int>(Enumerable.Range(1, 1).ToList());
+                heap = new BinaryHeap(Enumerable.Range(1, 1).ToList());
                 Assert.AreEqual(1, heap.Buffer.Count);
                 Assert.AreEqual(1, heap.Buffer.First());
 
-                heap = new BinaryHeap<int>(Enumerable.Range(1, 2).ToList());
+                heap = new BinaryHeap(Enumerable.Range(1, 2).ToList());
                 Assert.AreEqual(2, heap.Buffer.Count);
                 Assert.AreEqual(2, heap.Buffer.First());
             }
@@ -37,7 +37,7 @@ namespace HNSW.Net.Tests
             // Heapify produces correct heap.
             {
                 const string input = "Hello, World!";
-                var heap = new BinaryHeap<char>(input.ToList());
+                var heap = new BinaryHeap(input.Select(v => (int)v).ToList());
                 AssertMaxHeap(heap);
             }
         }
@@ -48,7 +48,7 @@ namespace HNSW.Net.Tests
         [TestMethod]
         public void PushPopTest()
         {
-            var heap = new BinaryHeap<int>(Enumerable.Empty<int>().ToList());
+            var heap = new BinaryHeap(Enumerable.Empty<int>().ToList());
             for (int i = 0; i < 10; ++i)
             {
                 heap.Push(i);
@@ -64,7 +64,7 @@ namespace HNSW.Net.Tests
             }
         }
 
-        private void AssertMaxHeap<T>(BinaryHeap<T> heap)
+        private void AssertMaxHeap(BinaryHeap heap)
         {
             for (int p = 0; p < heap.Buffer.Count; ++p)
             {

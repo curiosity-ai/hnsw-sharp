@@ -23,14 +23,14 @@ namespace HNSW.Net
             var visitedIds = new HashSet<int>();
             var expansionQueue = new Queue<int>(new[] { entryPoint.Id });
 
-            while (expansionQueue.Any())
+            while (expansionQueue.Count > 0)
             {
                 var currentNode = core.Nodes[expansionQueue.Dequeue()];
                 if (!visitedIds.Contains(currentNode.Id))
                 {
                     visitAction(currentNode);
                     visitedIds.Add(currentNode.Id);
-                    foreach (var neighbourId in currentNode[layer])
+                    foreach (var neighbourId in currentNode.EnumerateLayer(layer))
                     {
                         expansionQueue.Enqueue(neighbourId);
                     }

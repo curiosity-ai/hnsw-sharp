@@ -205,6 +205,14 @@ namespace HNSW.Net
         }
 
         /// <summary>
+        /// Ensure all layer connections are cached in a flatten memory representation.
+        /// </summary>
+        public void OptimizeIfNeeded(bool force = false)
+        {
+            Graph.OptimizeIfNeeded(force);
+        }
+
+        /// <summary>
         /// Frees the memory used by the Distance Cache
         /// </summary>
         public void ResizeDistanceCache(int newSize)

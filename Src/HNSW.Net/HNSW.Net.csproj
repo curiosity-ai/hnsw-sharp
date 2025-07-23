@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netstandard2.1;net7.0;net8.0</TargetFrameworks>
+    <TargetFrameworks>net9.0</TargetFrameworks>
     <Platforms>AnyCPU</Platforms>
     <Company>Curiosity GmbH</Company>
     <PackageId>HNSW</PackageId>
@@ -21,7 +21,5 @@
   
   <ItemGroup>
     <PackageReference Include="MessagePack" Version="2.5.172" />
-    <PackageReference Include="System.Memory" Version="4.5.5" />
-    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
   </ItemGroup>
 </Project>

@@ -34,6 +34,9 @@ public class MetricsEventListener : EventListener
             return;
         }
 
-        Console.WriteLine($"[{counterData["Name"]:n1}]: Avg={counterData["Mean"]:n1}; SD={counterData["StandardDeviation"]:n1}; Count={counterData["Count"]}");
+        if (counterData["Name"] == "GetDistance.CacheHitRate" || counterData["Name"] == "InsertNode.Latency")
+        {
+            Console.WriteLine($"[{counterData["Name"]:n1}]: Avg={counterData["Mean"]:n1}; SD={counterData["StandardDeviation"]:n1}; Count={counterData["Count"]}");
+        }
     }
 }

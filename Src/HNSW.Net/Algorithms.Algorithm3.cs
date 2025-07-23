@@ -32,7 +32,7 @@ namespace HNSW.Net
 
                 // !NO COPY! in-place selection
                 var bestN = GetM(layer);
-                var candidatesHeap = new BinaryHeap<int>(candidatesIds, travelingCosts);
+                var candidatesHeap = new BinaryHeap(candidatesIds, travelingCosts);
                 while (candidatesHeap.Buffer.Count > bestN)
                 {
                     candidatesHeap.Pop();

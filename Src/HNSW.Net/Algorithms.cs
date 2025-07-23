@@ -43,11 +43,7 @@ namespace HNSW.Net
                     connections.Add(new List<int>(layerM));
                 }
 
-                return new Node
-                {
-                    Id = nodeId,
-                    Connections = connections
-                };
+                return new Node(connections, nodeId);
             }
 
             /// <summary>
@@ -84,14 +80,14 @@ namespace HNSW.Net
             /// <param name="node">The node to add neighbour to.</param>
             /// <param name="neighbour">The new neighbour.</param>
             /// <param name="layer">The layer to add neighbour to.</param>
-            internal void Connect(Node node, Node neighbour, int layer)
+            internal void Connect(ref Node node, ref Node neighbour, int layer)
             {
-                var nodeLayer = node[layer];
+                var nodeLayer = node.GetLayerForModifying(layer);
                 nodeLayer.Add(neighbour.Id);
                 if (nodeLayer.Count > GetM(layer))
                 {
                     var travelingCosts = new TravelingCosts<int, TDistance>(NodeDistance, node.Id);
-                    node[layer] = SelectBestForConnecting(nodeLayer, travelingCosts, layer);
+                    node.SetLayer(layer, SelectBestForConnecting(nodeLayer, travelingCosts, layer));
                 }
             }
         }
