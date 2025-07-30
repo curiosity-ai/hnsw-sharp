@@ -259,6 +259,7 @@ namespace HNSW.Net
         {
             GraphCore.Serialize(stream);
             MessagePackSerializer.Serialize(stream, EntryPoint);
+            OptimizeIfNeeded(force: _cachedNodeData is object);
         }
 
         /// <summary>

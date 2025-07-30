@@ -128,6 +128,7 @@ namespace HNSW.Net.Demo
 
             using (var f = File.Open($"{pathPrefix}.{GraphPathSuffix}", FileMode.Create))
             {
+                world.OptimizeIfNeeded(force: true); //Force testing serializing after optimizing
                 world.SerializeGraph(f);
             }
 
@@ -155,6 +156,23 @@ namespace HNSW.Net.Demo
             clock = Stopwatch.StartNew();
             var vectors = RandomVectors(Dimensionality, TestSize);
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
+
+            Console.WriteLine("Running search agains the graph... ");
+            using (var listener = new MetricsEventListener(EventSources.GraphSearchEventSource.Instance))
+            {
+                clock = Stopwatch.StartNew();
+                Parallel.ForEach(vectors, (vector) =>
+                {
+                    world.KNNSearch(vector, 10);
+                });
+                Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
+            }
+
+            Console.Write($"Saving HNSW graph to '${Path.Combine(Directory.GetCurrentDirectory(), pathPrefix)}'... ");
+            using (var f = File.Open($"{pathPrefix}.{GraphPathSuffix}", FileMode.Create))
+            {
+                world.SerializeGraph(f);
+            }
 
             Console.WriteLine("Running search agains the graph... ");
             using (var listener = new MetricsEventListener(EventSources.GraphSearchEventSource.Instance))
