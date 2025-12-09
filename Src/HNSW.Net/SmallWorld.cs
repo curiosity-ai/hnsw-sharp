@@ -212,12 +212,21 @@ namespace HNSW.Net
             Graph.OptimizeIfNeeded(force);
         }
 
+
         /// <summary>
         /// Frees the memory used by the Distance Cache
         /// </summary>
+        public void DisableDistanceCache()
+        {
+            Graph.GraphCore.ResizeDistanceCache(-1);
+        }
+
+        /// <summary>
+        /// Resizes the distance cache used for caching embedding distances
+        /// </summary>
         public void ResizeDistanceCache(int newSize)
         {
-            Graph.GraphCore.ResizeDistanceCache(newSize);
+            Graph.GraphCore.ResizeDistanceCache(Math.Max(0, newSize));
         }
 
         [MessagePackObject(keyAsPropertyName:true)]

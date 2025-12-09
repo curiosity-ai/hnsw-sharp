@@ -22,7 +22,7 @@ namespace HNSW.Net
         {
             private readonly Func<TItem, TItem, TDistance> Distance;
 
-            private readonly DistanceCache<TDistance> DistanceCache;
+            private DistanceCache<TDistance> DistanceCache;
 
             private long DistanceCalculationsCount;
 
@@ -89,7 +89,14 @@ namespace HNSW.Net
 
             internal void ResizeDistanceCache(int newSize)
             {
-                DistanceCache?.Resize(newSize, true);
+                if (newSize >= 0)
+                {
+                    DistanceCache?.Resize(newSize, true);
+                }
+                else
+                {
+                    DistanceCache = null;
+                }
             }
 
             internal void Serialize(Stream stream)
