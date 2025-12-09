@@ -17,7 +17,6 @@ namespace HNSW.Net.Demo
     using System.Threading;
     using System.Threading.Tasks;
 
-    using Parameters = SmallWorld<float[], float>.Parameters;
 
     public static partial class Program
     {
@@ -37,7 +36,7 @@ namespace HNSW.Net.Demo
 
         private static async Task MultithreadAddAndReadAsync()
         {
-            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true}, threadSafe : false);
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new SmallWorldParameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true}, threadSafe : false);
 
             var cts = new CancellationTokenSource();
 
@@ -100,7 +99,7 @@ namespace HNSW.Net.Demo
 
         private static void BuildAndSave(string pathPrefix)
         {
-            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new Parameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true});
+            var world = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, new SmallWorldParameters() { EnableDistanceCacheForConstruction  = true, InitialDistanceCacheSize = SampleSize, NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, KeepPrunedConnections = true, ExpandBestSelection = true});
 
             Console.Write($"Generating {SampleSize} sample vectors... ");
             var clock = Stopwatch.StartNew();

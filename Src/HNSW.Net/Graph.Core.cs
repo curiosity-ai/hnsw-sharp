@@ -32,11 +32,11 @@ namespace HNSW.Net
 
             internal Algorithms.Algorithm<TItem, TDistance> Algorithm { get; private set; }
 
-            internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; private set; }
+            internal SmallWorldParameters Parameters { get; private set; }
 
             internal float DistanceCacheHitRate => (float)(DistanceCache?.HitCount ?? 0) / DistanceCalculationsCount;
 
-            internal Core(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters)
+            internal Core(Func<TItem, TItem, TDistance> distance, SmallWorldParameters parameters)
             {
                 Distance = distance;
                 Parameters = parameters;

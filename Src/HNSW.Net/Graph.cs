@@ -37,13 +37,13 @@ namespace HNSW.Net
         /// </summary>
         /// <param name="distance">The distance function.</param>
         /// <param name="parameters">The parameters of the world.</param>
-        internal Graph(Func<TItem, TItem, TDistance> distance, SmallWorld<TItem, TDistance>.Parameters parameters)
+        internal Graph(Func<TItem, TItem, TDistance> distance, SmallWorldParameters parameters)
         {
             Distance = distance;
             Parameters = parameters;
         }
 
-        internal SmallWorld<TItem, TDistance>.Parameters Parameters { get; }
+        internal SmallWorldParameters Parameters { get; }
 
         /// <summary>
         /// Creates graph from the given items.
