@@ -16,6 +16,7 @@ var parameters = new SmallWorld<float[], float>.Parameters()
 {
   M = 15,
   LevelLambda = 1 / Math.Log(15),
+  EfSearch = 50,
 };
 
 float[] vectors = GetFloatVectors();
@@ -80,4 +81,3 @@ When you submit a pull request, a CLA-bot will automatically determine whether y
 ### Releasing
 The library is distributed as a bundle of sources.
 We are working on enabling CI and creating Nuget package for the project.
-

@@ -101,7 +101,7 @@ namespace HNSW.Net
                         // get next candidate to check and expand
                         var toExpandId = expansionHeap.Pop();
                         var farthestResultId = resultHeap.Buffer.Count > 0 ? resultHeap.Buffer[0] : -1;
-                        if (farthestResultId > 0 && DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
+                        if (farthestResultId >= 0 && DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
                         {
                             // the closest candidate is farther than farthest result
                             break;
