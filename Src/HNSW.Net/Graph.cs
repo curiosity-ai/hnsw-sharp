@@ -220,9 +220,19 @@ namespace HNSW.Net
                             resultIds.Clear();
                         }
 
-                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, k, ref _version, versionNow, keepResultInner, cancellationToken);
+                        var efSearch = Math.Max(k, Parameters.EfSearch);
+                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, efSearch, ref _version, versionNow, keepResultInner, cancellationToken);
                         
                         GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
+
+                        if (resultIds.Count > k)
+                        {
+                            var resultHeap = new BinaryHeap(resultIds, destinationTravelingCosts);
+                            while (resultHeap.Buffer.Count > k)
+                            {
+                                resultHeap.Pop();
+                            }
+                        }
 
                         return resultIds.Select(id => new SmallWorld<TItem, TDistance>.KNNSearchResult(id, GraphCore.Items[id], RuntimeDistance(id, -1))).ToList();
                     }

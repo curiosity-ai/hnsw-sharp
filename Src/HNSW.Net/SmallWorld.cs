@@ -259,6 +259,7 @@ namespace HNSW.Net
             LevelLambda = 1 / Math.Log(M);
             NeighbourHeuristic = NeighbourSelectionHeuristic.SelectSimple;
             ConstructionPruning = 200;
+            EfSearch = 50;
             ExpandBestSelection = false;
             KeepPrunedConnections = false;
             EnableDistanceCacheForConstruction = true;
@@ -287,6 +288,11 @@ namespace HNSW.Net
         /// Gets or sets the number of candidates to consider as neighbours for a given node at the graph construction phase. See 'efConstruction' parameter in the article.
         /// </summary>
         public int ConstructionPruning { get; set; }
+
+        /// <summary>
+        /// Gets or sets the number of candidates to keep during search at layer 0. See 'efSearch' parameter in the article.
+        /// </summary>
+        public int EfSearch { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether to expand candidates if <see cref="NeighbourSelectionHeuristic.SelectHeuristic"/> is used. See 'extendCandidates' parameter in the article.
