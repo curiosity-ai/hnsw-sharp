@@ -43,7 +43,7 @@ namespace HNSW.Net
             Parameters = parameters;
         }
 
-        internal SmallWorldParameters Parameters { get; }
+        public SmallWorldParameters Parameters { get; }
 
         /// <summary>
         /// Creates graph from the given items.

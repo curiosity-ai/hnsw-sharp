@@ -40,7 +40,7 @@ namespace HNSW.Net.Tests
         [TestMethod]
         public void KNNSearchTest()
         {
-            var parameters = new SmallWorld<float[], float>.Parameters();
+            var parameters = new SmallWorldParameters();
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
             graph.AddItems(vectors);
 
@@ -68,7 +68,7 @@ namespace HNSW.Net.Tests
         [TestMethod]
         public void KNNSearchWithFilterTest()
         {
-            var parameters = new SmallWorld<float[], float>.Parameters();
+            var parameters = new SmallWorldParameters();
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
             graph.AddItems(vectors);
 
@@ -89,7 +89,7 @@ namespace HNSW.Net.Tests
         [DataRow(true, true)]
         public void KNNSearchTestAlgorithm4(bool expandBestSelection, bool keepPrunedConnections)
         {
-            var parameters = new SmallWorld<float[], float>.Parameters() { NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, ExpandBestSelection = expandBestSelection, KeepPrunedConnections = keepPrunedConnections };
+            var parameters = new SmallWorldParameters() { NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic, ExpandBestSelection = expandBestSelection, KeepPrunedConnections = keepPrunedConnections };
             var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
             graph.AddItems(vectors);
 
@@ -123,7 +123,7 @@ namespace HNSW.Net.Tests
             // restrict scope of original graph
             var stream = new MemoryStream();
             {
-                var parameters = new SmallWorld<float[], float>.Parameters()
+                var parameters = new SmallWorldParameters()
                 {
                     M = 15,
                     LevelLambda = 1 / Math.Log(15),
@@ -156,7 +156,7 @@ namespace HNSW.Net.Tests
             // restrict scope of original graph
             var stream = new MemoryStream();
             {
-                var parameters = new SmallWorld<float[], float>.Parameters()
+                var parameters = new SmallWorldParameters()
                 {
                     M = 15,
                     LevelLambda = 1 / Math.Log(15),
