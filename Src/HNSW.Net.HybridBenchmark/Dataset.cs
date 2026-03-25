@@ -94,6 +94,41 @@ namespace HNSW.Net.HybridBenchmark
             return results.ToArray();
         }
 
+        public static void SaveGroundTruth(int[][] groundTruth, string path)
+        {
+            using var stream = File.Create(path);
+            using var writer = new BinaryWriter(stream);
+            writer.Write(groundTruth.Length);
+            for (int i = 0; i < groundTruth.Length; i++)
+            {
+                var row = groundTruth[i];
+                writer.Write(row.Length);
+                for (int j = 0; j < row.Length; j++)
+                {
+                    writer.Write(row[j]);
+                }
+            }
+        }
+
+        public static int[][] LoadGroundTruth(string path)
+        {
+            using var stream = File.OpenRead(path);
+            using var reader = new BinaryReader(stream);
+            int length = reader.ReadInt32();
+            var groundTruth = new int[length][];
+            for (int i = 0; i < length; i++)
+            {
+                int rowLength = reader.ReadInt32();
+                var row = new int[rowLength];
+                for (int j = 0; j < rowLength; j++)
+                {
+                    row[j] = reader.ReadInt32();
+                }
+                groundTruth[i] = row;
+            }
+            return groundTruth;
+        }
+
         public static async Task DownloadAndExtractAsync(string workingDir)
         {
             string tarPath = Path.Combine(workingDir, "sift.tar.gz");
