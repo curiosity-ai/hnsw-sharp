@@ -1,0 +1,158 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using BenchmarkDotNet.Attributes;
+using HNSW.Net;
+
+namespace HNSW.Net.HybridBenchmark
+{
+    public struct Item
+    {
+        public int Id;
+        public float[] Vector;
+        public int Attribute;
+    }
+
+    public class HybridBenchmark
+    {
+        private static float[][] _baseVectors;
+        private static float[][] _queryVectors;
+
+        private static Item[] _baseItems;
+        private static Item[] _queryItems;
+
+        private static int[][] _groundTruth;
+
+        private static SmallWorld<Item, float> _cachedGraph;
+        private static (int M, int EfConstruction, bool OptimizeForFiltering, int Gamma, int Mb) _cachedGraphParams;
+
+        private SmallWorld<Item, float> _graph;
+
+        [Params(16)]
+        public int M { get; set; }
+
+        [Params(200)]
+        public int EfConstruction { get; set; }
+
+        [Params(50, 100, 200)]
+        public int EfSearch { get; set; }
+
+        // By default false, which means it will do Post-Filtering
+        [Params(false, true)]
+        public bool OptimizeForFiltering { get; set; }
+
+        public int Gamma { get; set; } = 12; // Typical value for SIFT1M per paper
+        public int Mb { get; set; } = 16; // Small multiple of M, typically M, 2M, or 64. Using M.
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            string workingDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+            if (!Directory.Exists(workingDir)) Directory.CreateDirectory(workingDir);
+
+            Dataset.DownloadAndExtractAsync(workingDir).GetAwaiter().GetResult();
+
+            string siftDir = Path.Combine(workingDir, "sift");
+            if (_baseVectors == null)
+            {
+                Console.WriteLine("Reading dataset...");
+                _baseVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_base.fvecs"));
+                _queryVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_query.fvecs"));
+
+                var baseAttributes = Dataset.GenerateRandomAttributes(_baseVectors.Length, seed: 42);
+                var queryAttributes = Dataset.GenerateRandomAttributes(_queryVectors.Length, seed: 43);
+
+                _baseItems = new Item[_baseVectors.Length];
+                for (int i = 0; i < _baseVectors.Length; i++)
+                {
+                    _baseItems[i] = new Item { Id = i, Vector = _baseVectors[i], Attribute = baseAttributes[i] };
+                }
+
+                _queryItems = new Item[_queryVectors.Length];
+                for (int i = 0; i < _queryVectors.Length; i++)
+                {
+                    _queryItems[i] = new Item { Id = i, Vector = _queryVectors[i], Attribute = queryAttributes[i] };
+                }
+
+                _groundTruth = Dataset.ComputeHybridGroundTruth(_baseVectors, baseAttributes, _queryVectors, queryAttributes, 10);
+
+                Console.WriteLine($"Loaded {_baseVectors.Length} base vectors");
+                Console.WriteLine($"Loaded {_queryVectors.Length} query vectors");
+            }
+
+            if (_cachedGraph == null || _cachedGraphParams.M != M || _cachedGraphParams.EfConstruction != EfConstruction ||
+                _cachedGraphParams.OptimizeForFiltering != OptimizeForFiltering ||
+                _cachedGraphParams.Gamma != Gamma || _cachedGraphParams.Mb != Mb)
+            {
+                var parameters = new SmallWorldParameters
+                {
+                    M = M,
+                    LevelLambda = 1 / Math.Log(M),
+                    ConstructionPruning = EfConstruction,
+                    EfSearch = EfSearch,
+                    EnableDistanceCacheForConstruction = true,
+                    OptimizeForFiltering = OptimizeForFiltering,
+                    Gamma = Gamma,
+                    Mb = Mb
+                };
+
+                Console.WriteLine($"Building graph with M={M}, EfConstruction={EfConstruction}, OptimizeForFiltering={OptimizeForFiltering}, Gamma={Gamma}, Mb={Mb}...");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+
+                // Using distance function that only cares about vector
+                float DistanceFunc(Item a, Item b) => L2Distance.SIMD(a.Vector, b.Vector);
+
+                var graph = new SmallWorld<Item, float>(DistanceFunc, DefaultRandomGenerator.Instance, parameters);
+                graph.AddItems(_baseItems);
+                sw.Stop();
+                Console.WriteLine($"Graph built in {sw.Elapsed.TotalSeconds:N2}s.");
+
+                _cachedGraph = graph;
+                _cachedGraphParams = (M, EfConstruction, OptimizeForFiltering, Gamma, Mb);
+            }
+
+            _graph = _cachedGraph;
+            _graph.Parameters.EfSearch = EfSearch;
+        }
+
+        [Benchmark]
+        public void Search()
+        {
+            for (int i = 0; i < _queryItems.Length; i++)
+            {
+                var queryItem = _queryItems[i];
+                // Post-filter matching the attribute. With OptimizeForFiltering=true it will do predicate subgraph traversal.
+                _graph.KNNSearch(queryItem, 10, item => item.Attribute == queryItem.Attribute);
+            }
+        }
+
+        [IterationCleanup]
+        public void Cleanup()
+        {
+            int correct1 = 0;
+            int correct10 = 0;
+            int total = _queryItems.Length;
+
+            for (int i = 0; i < total; i++)
+            {
+                var queryItem = _queryItems[i];
+                var results1 = _graph.KNNSearch(queryItem, 1, item => item.Attribute == queryItem.Attribute);
+                if (results1.Count > 0 && results1[0].Item.Id == _groundTruth[i][0])
+                {
+                    correct1++;
+                }
+
+                var results10 = _graph.KNNSearch(queryItem, 10, item => item.Attribute == queryItem.Attribute);
+                if (results10.Any(r => r.Item.Id == _groundTruth[i][0]))
+                {
+                    correct10++;
+                }
+            }
+
+            double recall1 = (double)correct1 / total;
+            double recall10 = (double)correct10 / total;
+            Console.WriteLine($"[Configuration M={M}, EfConstruction={EfConstruction}, EfSearch={EfSearch}, OptimizeForFiltering={OptimizeForFiltering}] Recall@1: {recall1:P2}, Recall@10: {recall10:P2}");
+        }
+    }
+}
