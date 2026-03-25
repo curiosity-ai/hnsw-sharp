@@ -52,14 +52,10 @@ namespace HNSW.Net.SiftBenchmark
             if (!File.Exists(tarPath))
             {
                 Console.WriteLine("Downloading Sift1M dataset...");
-#pragma warning disable SYSLIB0014 // Type or member is obsolete
-                var request = (FtpWebRequest)WebRequest.Create("ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz");
-#pragma warning restore SYSLIB0014 // Type or member is obsolete
-                request.Method = WebRequestMethods.Ftp.DownloadFile;
-                using var response = (FtpWebResponse)await request.GetResponseAsync();
-                using var responseStream = response.GetResponseStream();
-                using var fileStream = File.Create(tarPath);
-                await responseStream.CopyToAsync(fileStream);
+                using var client = new FluentFTP.AsyncFtpClient("ftp.irisa.fr");
+                await client.Connect();
+                await client.DownloadFile(tarPath, "/local/texmex/corpus/sift.tar.gz");
+                await client.Disconnect();
             }
 
             // Check if extracted files already exist to avoid re-extracting
