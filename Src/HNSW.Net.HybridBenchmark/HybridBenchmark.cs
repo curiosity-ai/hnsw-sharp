@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
@@ -14,6 +15,10 @@ namespace HNSW.Net.HybridBenchmark
         public int Attribute;
     }
 
+    [MinIterationCount(1)]
+    [MinWarmupCount(1)]
+    [MaxWarmupCount(2)]
+    [MaxIterationCount(2)]
     public class HybridBenchmark
     {
         private static float[][] _baseVectors;
@@ -60,25 +65,30 @@ namespace HNSW.Net.HybridBenchmark
                 _baseVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_base.fvecs"));
                 _queryVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_query.fvecs"));
 
+                int keepBaseVectors = 100_000;
+                int keepQueryVectors = 500;
+
                 var baseAttributes = Dataset.GenerateRandomAttributes(_baseVectors.Length, seed: 42);
                 var queryAttributes = Dataset.GenerateRandomAttributes(_queryVectors.Length, seed: 43);
 
-                _baseItems = new Item[_baseVectors.Length];
-                for (int i = 0; i < _baseVectors.Length; i++)
+                var baseItemsLen = Math.Min(keepBaseVectors, _baseVectors.Length);
+                _baseItems = new Item[baseItemsLen];
+                for (int i = 0; i < baseItemsLen; i++)
                 {
                     _baseItems[i] = new Item { Id = i, Vector = _baseVectors[i], Attribute = baseAttributes[i] };
                 }
 
-                _queryItems = new Item[_queryVectors.Length];
-                for (int i = 0; i < _queryVectors.Length; i++)
+                var queryItemsLen = Math.Min(keepQueryVectors, _queryVectors.Length);
+                _queryItems = new Item[queryItemsLen];
+                for (int i = 0; i < queryItemsLen; i++)
                 {
                     _queryItems[i] = new Item { Id = i, Vector = _queryVectors[i], Attribute = queryAttributes[i] };
                 }
 
                 _groundTruth = Dataset.ComputeHybridGroundTruth(_baseVectors, baseAttributes, _queryVectors, queryAttributes, 10);
 
-                Console.WriteLine($"Loaded {_baseVectors.Length} base vectors");
-                Console.WriteLine($"Loaded {_queryVectors.Length} query vectors");
+                Console.WriteLine($"Loaded {baseItemsLen}/{_baseVectors.Length} base vectors");
+                Console.WriteLine($"Loaded {queryItemsLen}/{_queryVectors.Length} query vectors");
             }
 
             if (_cachedGraph == null || _cachedGraphParams.M != M || _cachedGraphParams.EfConstruction != EfConstruction ||
@@ -104,7 +114,7 @@ namespace HNSW.Net.HybridBenchmark
                 float DistanceFunc(Item a, Item b) => L2Distance.SIMD(a.Vector, b.Vector);
 
                 var graph = new SmallWorld<Item, float>(DistanceFunc, DefaultRandomGenerator.Instance, parameters);
-                graph.AddItems(_baseItems);
+                graph.AddItems(_baseItems, new ConsoleProgress());
                 sw.Stop();
                 Console.WriteLine($"Graph built in {sw.Elapsed.TotalSeconds:N2}s.");
 
@@ -119,7 +129,7 @@ namespace HNSW.Net.HybridBenchmark
         [Benchmark]
         public void Search()
         {
-            for (int i = 0; i < _queryItems.Length; i++)
+            for (int i = 0; i < Math.Min(1000, _queryItems.Length); i++)
             {
                 var queryItem = _queryItems[i];
                 // Post-filter matching the attribute. With OptimizeForFiltering=true it will do predicate subgraph traversal.
@@ -153,6 +163,20 @@ namespace HNSW.Net.HybridBenchmark
             double recall1 = (double)correct1 / total;
             double recall10 = (double)correct10 / total;
             Console.WriteLine($"[Configuration M={M}, EfConstruction={EfConstruction}, EfSearch={EfSearch}, OptimizeForFiltering={OptimizeForFiltering}] Recall@1: {recall1:P2}, Recall@10: {recall10:P2}");
+        }
+    }
+
+    internal class ConsoleProgress : IProgressReporter
+    {
+        private Stopwatch _sw;
+        public void Progress(int current, int total)
+        {
+            if (_sw is null) _sw = Stopwatch.StartNew();
+            if (_sw.Elapsed.TotalSeconds > 5)
+            {
+                Console.WriteLine($"At {current:n0} of {total:n0} or {100f * current / total}%");
+                _sw.Restart();
+            }
         }
     }
 }
