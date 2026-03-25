@@ -271,7 +271,25 @@ namespace HNSW.Net
             EnableDistanceCacheForConstruction = true;
             InitialDistanceCacheSize = 1024 * 1024;
             InitialItemsSize = 1024;
+            OptimizeForFiltering = false;
+            Gamma = 1;
+            Mb = 10;
         }
+
+        /// <summary>
+        /// Gets or sets whether the graph should be constructed for filtering, according to ACORN (https://arxiv.org/html/2403.04871v1).
+        /// </summary>
+        public bool OptimizeForFiltering { get; set; }
+
+        /// <summary>
+        /// Gets or sets the neighbor expansion factor for the ACORN-γ index.
+        /// </summary>
+        public int Gamma { get; set; }
+
+        /// <summary>
+        /// Gets or sets the compression parameter for ACORN's layer 0.
+        /// </summary>
+        public int Mb { get; set; }
 
         /// <summary>
         /// Gets or sets the parameter which defines the maximum number of neighbors in the zero and above-zero layers.
