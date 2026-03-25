@@ -26,6 +26,12 @@ namespace HNSW.Net
         private readonly Func<TItem, TItem, TDistance> Distance;
 
         private Graph<TItem, TDistance> Graph;
+
+        /// <summary>
+        /// Gets the parameters of the small world.
+        /// </summary>
+        public SmallWorldParameters Parameters => Graph.Parameters;
+
         private IProvideRandomValues Generator;
 
         private ReaderWriterLockSlim _rwLock;

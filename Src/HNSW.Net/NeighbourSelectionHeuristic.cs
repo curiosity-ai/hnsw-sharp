@@ -1,4 +1,4 @@
-﻿// <copyright file="SmallWorld.cs" company="Microsoft">
+// <copyright file="NeighbourSelectionHeuristic.cs" company="Microsoft">
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 // </copyright>
