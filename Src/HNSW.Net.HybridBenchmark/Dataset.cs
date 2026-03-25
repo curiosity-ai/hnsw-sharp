@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Threading.Tasks;
 
 namespace HNSW.Net.HybridBenchmark
@@ -94,26 +94,51 @@ namespace HNSW.Net.HybridBenchmark
             return results.ToArray();
         }
 
+        public static void SaveGroundTruth(int[][] groundTruth, string path)
+        {
+            using var stream = File.Create(path);
+            using var writer = new BinaryWriter(stream);
+            writer.Write(groundTruth.Length);
+            for (int i = 0; i < groundTruth.Length; i++)
+            {
+                var row = groundTruth[i];
+                writer.Write(row.Length);
+                for (int j = 0; j < row.Length; j++)
+                {
+                    writer.Write(row[j]);
+                }
+            }
+        }
+
+        public static int[][] LoadGroundTruth(string path)
+        {
+            using var stream = File.OpenRead(path);
+            using var reader = new BinaryReader(stream);
+            int length = reader.ReadInt32();
+            var groundTruth = new int[length][];
+            for (int i = 0; i < length; i++)
+            {
+                int rowLength = reader.ReadInt32();
+                var row = new int[rowLength];
+                for (int j = 0; j < rowLength; j++)
+                {
+                    row[j] = reader.ReadInt32();
+                }
+                groundTruth[i] = row;
+            }
+            return groundTruth;
+        }
+
         public static async Task DownloadAndExtractAsync(string workingDir)
         {
             string tarPath = Path.Combine(workingDir, "sift.tar.gz");
             if (!File.Exists(tarPath))
             {
-                Console.WriteLine("Downloading Sift1M dataset via curl...");
-                var psi = new ProcessStartInfo("curl", $"-L ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz -o \"{tarPath}\"")
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false
-                };
-                var process = Process.Start(psi);
-                if (process == null) throw new Exception("Failed to start curl");
-                await process.WaitForExitAsync();
-                if (process.ExitCode != 0)
-                {
-                    string error = await process.StandardError.ReadToEndAsync();
-                    throw new Exception($"curl failed with exit code {process.ExitCode}: {error}");
-                }
+                Console.WriteLine("Downloading Sift1M dataset...");
+                using var client = new FluentFTP.AsyncFtpClient("ftp.irisa.fr");
+                await client.Connect();
+                await client.DownloadFile(tarPath, "/local/texmex/corpus/sift.tar.gz");
+                await client.Disconnect();
             }
 
             // Check if extracted files already exist to avoid re-extracting

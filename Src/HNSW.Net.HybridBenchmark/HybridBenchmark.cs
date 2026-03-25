@@ -53,7 +53,7 @@ namespace HNSW.Net.HybridBenchmark
         [GlobalSetup]
         public void Setup()
         {
-            string workingDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+            string workingDir = Path.Combine(Path.GetTempPath(), "hnsw-bench");
             if (!Directory.Exists(workingDir)) Directory.CreateDirectory(workingDir);
 
             Dataset.DownloadAndExtractAsync(workingDir).GetAwaiter().GetResult();
@@ -85,7 +85,17 @@ namespace HNSW.Net.HybridBenchmark
                     _queryItems[i] = new Item { Id = i, Vector = _queryVectors[i], Attribute = queryAttributes[i] };
                 }
 
-                _groundTruth = Dataset.ComputeHybridGroundTruth(_baseVectors, baseAttributes, _queryVectors, queryAttributes, 10);
+                string groundTruthPath = Path.Combine(workingDir, "groundTruth.bin");
+                if (File.Exists(groundTruthPath))
+                {
+                    Console.WriteLine("Loading hybrid ground truth...");
+                    _groundTruth = Dataset.LoadGroundTruth(groundTruthPath);
+                }
+                else
+                {
+                    _groundTruth = Dataset.ComputeHybridGroundTruth(_baseVectors, baseAttributes, _queryVectors, queryAttributes, 10);
+                    Dataset.SaveGroundTruth(_groundTruth, groundTruthPath);
+                }
 
                 Console.WriteLine($"Loaded {baseItemsLen}/{_baseVectors.Length} base vectors");
                 Console.WriteLine($"Loaded {queryItemsLen}/{_queryVectors.Length} query vectors");
@@ -95,30 +105,45 @@ namespace HNSW.Net.HybridBenchmark
                 _cachedGraphParams.OptimizeForFiltering != OptimizeForFiltering ||
                 _cachedGraphParams.Gamma != Gamma || _cachedGraphParams.Mb != Mb)
             {
-                var parameters = new SmallWorldParameters
-                {
-                    M = M,
-                    LevelLambda = 1 / Math.Log(M),
-                    ConstructionPruning = EfConstruction,
-                    EfSearch = EfSearch,
-                    EnableDistanceCacheForConstruction = true,
-                    OptimizeForFiltering = OptimizeForFiltering,
-                    Gamma = Gamma,
-                    Mb = Mb
-                };
-
-                Console.WriteLine($"Building graph with M={M}, EfConstruction={EfConstruction}, OptimizeForFiltering={OptimizeForFiltering}, Gamma={Gamma}, Mb={Mb}...");
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-
-                // Using distance function that only cares about vector
+                string graphCachePath = Path.Combine(workingDir, $"graph_{M}_{EfConstruction}_{OptimizeForFiltering}_{Gamma}_{Mb}.bin");
                 float DistanceFunc(Item a, Item b) => L2Distance.SIMD(a.Vector, b.Vector);
 
-                var graph = new SmallWorld<Item, float>(DistanceFunc, DefaultRandomGenerator.Instance, parameters);
-                graph.AddItems(_baseItems, new ConsoleProgress());
-                sw.Stop();
-                Console.WriteLine($"Graph built in {sw.Elapsed.TotalSeconds:N2}s.");
+                if (File.Exists(graphCachePath))
+                {
+                    Console.WriteLine($"Loading graph from {graphCachePath}...");
+                    using var stream = File.OpenRead(graphCachePath);
+                    var (graph, _) = SmallWorld<Item, float>.DeserializeGraph(_baseItems, DistanceFunc, DefaultRandomGenerator.Instance, stream);
+                    _cachedGraph = graph;
+                }
+                else
+                {
+                    var parameters = new SmallWorldParameters
+                    {
+                        M = M,
+                        LevelLambda = 1 / Math.Log(M),
+                        ConstructionPruning = EfConstruction,
+                        EfSearch = EfSearch,
+                        EnableDistanceCacheForConstruction = true,
+                        OptimizeForFiltering = OptimizeForFiltering,
+                        Gamma = Gamma,
+                        Mb = Mb
+                    };
 
-                _cachedGraph = graph;
+                    Console.WriteLine($"Building graph with M={M}, EfConstruction={EfConstruction}, OptimizeForFiltering={OptimizeForFiltering}, Gamma={Gamma}, Mb={Mb}...");
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+
+                    var graph = new SmallWorld<Item, float>(DistanceFunc, DefaultRandomGenerator.Instance, parameters);
+                    graph.AddItems(_baseItems, new ConsoleProgress());
+                    sw.Stop();
+                    Console.WriteLine($"Graph built in {sw.Elapsed.TotalSeconds:N2}s.");
+
+                    Console.WriteLine($"Saving graph to {graphCachePath}...");
+                    using var stream = File.Create(graphCachePath);
+                    graph.SerializeGraph(stream);
+
+                    _cachedGraph = graph;
+                }
+
                 _cachedGraphParams = (M, EfConstruction, OptimizeForFiltering, Gamma, Mb);
             }
 

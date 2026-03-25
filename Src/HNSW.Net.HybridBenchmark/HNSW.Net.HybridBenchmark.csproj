@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="FluentFTP" Version="54.0.2" />
   </ItemGroup>
 
   <ItemGroup>
