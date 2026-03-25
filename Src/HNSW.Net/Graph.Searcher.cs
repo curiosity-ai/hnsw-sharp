@@ -113,8 +113,8 @@ namespace HNSW.Net
 
                         IEnumerable<int> neighboursIds = rawNeighboursIds.ToArray();
 
-                        // Apply ACORN filtering
-                        if (Core.Parameters.EnableFiltering)
+                        // Apply ACORN filtering (https://arxiv.org/html/2403.04871v1)
+                        if (Core.Parameters.OptimizeForFiltering)
                         {
                             int targetM = layer == 0 ? 2 * Core.Parameters.M : Core.Parameters.M;
                             var rawArr = rawNeighboursIds.ToArray();

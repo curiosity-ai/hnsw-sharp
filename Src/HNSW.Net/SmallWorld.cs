@@ -265,15 +265,15 @@ namespace HNSW.Net
             EnableDistanceCacheForConstruction = true;
             InitialDistanceCacheSize = 1024 * 1024;
             InitialItemsSize = 1024;
-            EnableFiltering = false;
+            OptimizeForFiltering = false;
             Gamma = 1;
             Mb = 10;
         }
 
         /// <summary>
-        /// Gets or sets whether the graph should be constructed for filtering, according to ACORN.
+        /// Gets or sets whether the graph should be constructed for filtering, according to ACORN (https://arxiv.org/html/2403.04871v1).
         /// </summary>
-        public bool EnableFiltering { get; set; }
+        public bool OptimizeForFiltering { get; set; }
 
         /// <summary>
         /// Gets or sets the neighbor expansion factor for the ACORN-γ index.

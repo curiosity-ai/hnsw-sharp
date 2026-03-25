@@ -72,7 +72,7 @@ namespace HNSW.Net
             internal int GetM(int layer)
             {
                 int m = layer == 0 ? 2 * GraphCore.Parameters.M : GraphCore.Parameters.M;
-                if (GraphCore.Parameters.EnableFiltering)
+                if (GraphCore.Parameters.OptimizeForFiltering) // ACORN graph expansion (https://arxiv.org/html/2403.04871v1)
                 {
                     m *= GraphCore.Parameters.Gamma;
                 }

@@ -33,7 +33,8 @@ namespace HNSW.Net
                 var bestN = GetM(layer);
                 var candidatesHeap = new BinaryHeap(candidatesIds, travelingCosts);
 
-                if (GraphCore.Parameters.EnableFiltering && layer == 0)
+                // ACORN-gamma compression heuristic for layer 0 (https://arxiv.org/html/2403.04871v1)
+                if (GraphCore.Parameters.OptimizeForFiltering && layer == 0 && GraphCore.Parameters.Gamma > 1)
                 {
                     var sortedCandidates = new List<int>(candidatesHeap.Buffer);
                     sortedCandidates.Sort((a, b) => travelingCosts.From(a).CompareTo(travelingCosts.From(b)));
