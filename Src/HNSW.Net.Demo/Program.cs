@@ -71,7 +71,7 @@ namespace HNSW.Net.Demo
                     try
                     {
                         var searchVectors = RandomVectors(Dimensionality, SampleSize);
-                        Console.WriteLine("Running search agains the graph... ");
+                        Console.WriteLine("Running search against the graph... ");
                         using (var listener = new MetricsEventListener(EventSources.GraphSearchEventSource.Instance))
                         {
                             var clock = Stopwatch.StartNew();
@@ -156,15 +156,17 @@ namespace HNSW.Net.Demo
             var vectors = RandomVectors(Dimensionality, TestSize);
             Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
 
-            Console.WriteLine("Running search agains the graph... ");
+            Console.WriteLine("Running search against the graph... ");
             using (var listener = new MetricsEventListener(EventSources.GraphSearchEventSource.Instance))
             {
                 clock = Stopwatch.StartNew();
+                long count = 0;
                 Parallel.ForEach(vectors, (vector) =>
                 {
-                    world.KNNSearch(vector, 10);
+                    var results = world.KNNSearch(vector, 10);
+                    Interlocked.Add(ref count, results.Count);
                 });
-                Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms.");
+                Console.WriteLine($"Done in {clock.ElapsedMilliseconds} ms. Found {count:n0} results");
             }
 
             Console.Write($"Saving HNSW graph to '${Path.Combine(Directory.GetCurrentDirectory(), pathPrefix)}'... ");
