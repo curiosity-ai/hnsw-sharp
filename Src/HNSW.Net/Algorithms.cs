@@ -71,7 +71,12 @@ namespace HNSW.Net
             /// <returns>The maximum number of connections.</returns>
             internal int GetM(int layer)
             {
-                return layer == 0 ? 2 * GraphCore.Parameters.M : GraphCore.Parameters.M;
+                int m = layer == 0 ? 2 * GraphCore.Parameters.M : GraphCore.Parameters.M;
+                if (GraphCore.Parameters.EnableFiltering)
+                {
+                    m *= GraphCore.Parameters.Gamma;
+                }
+                return m;
             }
 
             /// <summary>

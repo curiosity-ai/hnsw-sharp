@@ -7,6 +7,7 @@ namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading;
 
     /// <content>
@@ -108,8 +109,106 @@ namespace HNSW.Net
                         }
 
                         // expand candidate
-                        var neighboursIds = Core.Nodes[toExpandId].EnumerateLayer(layer);
-                        
+                        var rawNeighboursIds = Core.Nodes[toExpandId].EnumerateLayer(layer);
+
+                        IEnumerable<int> neighboursIds = rawNeighboursIds.ToArray();
+
+                        // Apply ACORN filtering
+                        if (Core.Parameters.EnableFiltering)
+                        {
+                            int targetM = layer == 0 ? 2 * Core.Parameters.M : Core.Parameters.M;
+                            var rawArr = rawNeighboursIds.ToArray();
+
+                            if (layer > 0)
+                            {
+                                var filtered = new List<int>();
+                                foreach (var n in rawArr)
+                                {
+                                    if (keepResult(n))
+                                    {
+                                        filtered.Add(n);
+                                        if (filtered.Count >= targetM)
+                                            break;
+                                    }
+                                }
+                                neighboursIds = filtered;
+                            }
+                            else
+                            {
+                                var filtered = new List<int>();
+
+                                if (Core.Parameters.Gamma == 1) // ACORN-1
+                                {
+                                    foreach (var n in rawArr)
+                                    {
+                                        if (keepResult(n))
+                                        {
+                                            filtered.Add(n);
+                                            if (filtered.Count >= targetM)
+                                                break;
+                                        }
+                                        else
+                                        {
+                                            var twoHop = Core.Nodes[n].EnumerateLayer(layer);
+                                            foreach (var nn in twoHop)
+                                            {
+                                                if (keepResult(nn) && !filtered.Contains(nn))
+                                                {
+                                                    filtered.Add(nn);
+                                                    if (filtered.Count >= targetM)
+                                                    {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if (filtered.Count >= targetM)
+                                            {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                else // ACORN-gamma
+                                {
+                                    int mb = Math.Min(Core.Parameters.Mb, rawArr.Length);
+
+                                    for (int i = 0; i < mb; i++)
+                                    {
+                                        if (keepResult(rawArr[i]))
+                                        {
+                                            filtered.Add(rawArr[i]);
+                                        }
+                                    }
+
+                                    if (filtered.Count < targetM && rawArr.Length > mb)
+                                    {
+                                        for (int i = mb; i < rawArr.Length; i++)
+                                        {
+                                            int n = rawArr[i];
+                                            var twoHop = Core.Nodes[n].EnumerateLayer(layer);
+                                            foreach (var nn in twoHop)
+                                            {
+                                                if (keepResult(nn) && !filtered.Contains(nn))
+                                                {
+                                                    filtered.Add(nn);
+                                                    if (filtered.Count >= targetM)
+                                                    {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+
+                                            if (filtered.Count >= targetM)
+                                            {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                neighboursIds = filtered;
+                            }
+                        }
+
                         foreach(var neighbourId in neighboursIds) 
                         {
                             if (cancellationToken.IsCancellationRequested)

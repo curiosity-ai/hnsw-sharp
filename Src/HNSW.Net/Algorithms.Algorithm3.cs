@@ -30,15 +30,57 @@ namespace HNSW.Net
                  * return M nearest elements from C to q
                  */
 
-                // !NO COPY! in-place selection
                 var bestN = GetM(layer);
                 var candidatesHeap = new BinaryHeap(candidatesIds, travelingCosts);
-                while (candidatesHeap.Buffer.Count > bestN)
-                {
-                    candidatesHeap.Pop();
-                }
 
-                return candidatesHeap.Buffer;
+                if (GraphCore.Parameters.EnableFiltering && layer == 0)
+                {
+                    var sortedCandidates = new List<int>(candidatesHeap.Buffer);
+                    sortedCandidates.Sort((a, b) => travelingCosts.From(a).CompareTo(travelingCosts.From(b)));
+
+                    int mb = GraphCore.Parameters.Mb;
+                    var result = new List<int>(bestN);
+
+                    for (int i = 0; i < Math.Min(mb, sortedCandidates.Count); i++)
+                    {
+                        result.Add(sortedCandidates[i]);
+                    }
+
+                    var h = new HashSet<int>();
+                    for (int i = mb; i < sortedCandidates.Count; i++)
+                    {
+                        if (result.Count + h.Count >= bestN)
+                        {
+                            break;
+                        }
+
+                        int c = sortedCandidates[i];
+                        if (h.Contains(c))
+                        {
+                            continue;
+                        }
+
+                        result.Add(c);
+
+                        var neighbors = GraphCore.Nodes[c].EnumerateLayer(layer);
+                        foreach (var neighbor in neighbors)
+                        {
+                            h.Add(neighbor);
+                        }
+                    }
+
+                    return result;
+                }
+                else
+                {
+                    // !NO COPY! in-place selection
+                    while (candidatesHeap.Buffer.Count > bestN)
+                    {
+                        candidatesHeap.Pop();
+                    }
+
+                    return candidatesHeap.Buffer;
+                }
             }
         }
     }

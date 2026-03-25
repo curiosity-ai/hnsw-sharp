@@ -82,33 +82,74 @@ namespace HNSW.Net
                     }
                 }
 
-                // main stage of moving candidates to result
-                var discardedHeap = new BinaryHeap(new List<int>(candidatesHeap.Buffer.Count), closerIsOnTop);
-                while (candidatesHeap.Buffer.Count > 0 && resultHeap.Buffer.Count < layerM)
+                if (GraphCore.Parameters.EnableFiltering && layer == 0)
                 {
-                    var candidateId = candidatesHeap.Pop();
-                    var farestResultId = resultHeap.Buffer.FirstOrDefault();
+                    var sortedCandidates = new List<int>(candidatesHeap.Buffer);
+                    sortedCandidates.Sort((a, b) => travelingCosts.From(a).CompareTo(travelingCosts.From(b)));
 
-                    if (resultHeap.Buffer.Count == 0 || DistanceUtils.LowerThan(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
+                    int mb = GraphCore.Parameters.Mb;
+                    var result = new List<int>(layerM);
+
+                    for (int i = 0; i < Math.Min(mb, sortedCandidates.Count); i++)
                     {
-                        resultHeap.Push(candidateId);
+                        result.Add(sortedCandidates[i]);
                     }
-                    else if (keepPrunedConnections)
+
+                    var h = new HashSet<int>();
+                    for (int i = mb; i < sortedCandidates.Count; i++)
                     {
-                        discardedHeap.Push(candidateId);
+                        if (result.Count + h.Count >= layerM)
+                        {
+                            break;
+                        }
+
+                        int c = sortedCandidates[i];
+                        if (h.Contains(c))
+                        {
+                            continue;
+                        }
+
+                        result.Add(c);
+
+                        var neighbors = GraphCore.Nodes[c].EnumerateLayer(layer);
+                        foreach (var neighbor in neighbors)
+                        {
+                            h.Add(neighbor);
+                        }
                     }
+
+                    return result;
                 }
-
-                // keep pruned option is enabled
-                if (keepPrunedConnections)
+                else
                 {
-                    while (discardedHeap.Buffer.Count > 0 && resultHeap.Buffer.Count < layerM)
+                    // main stage of moving candidates to result
+                    var discardedHeap = new BinaryHeap(new List<int>(candidatesHeap.Buffer.Count), closerIsOnTop);
+                    while (candidatesHeap.Buffer.Count > 0 && resultHeap.Buffer.Count < layerM)
                     {
-                        resultHeap.Push(discardedHeap.Pop());
-                    }
-                }
+                        var candidateId = candidatesHeap.Pop();
+                        var farestResultId = resultHeap.Buffer.FirstOrDefault();
 
-                return resultHeap.Buffer;
+                        if (resultHeap.Buffer.Count == 0 || DistanceUtils.LowerThan(travelingCosts.From(candidateId), travelingCosts.From(farestResultId)))
+                        {
+                            resultHeap.Push(candidateId);
+                        }
+                        else if (keepPrunedConnections)
+                        {
+                            discardedHeap.Push(candidateId);
+                        }
+                    }
+
+                    // keep pruned option is enabled
+                    if (keepPrunedConnections)
+                    {
+                        while (discardedHeap.Buffer.Count > 0 && resultHeap.Buffer.Count < layerM)
+                        {
+                            resultHeap.Push(discardedHeap.Pop());
+                        }
+                    }
+
+                    return resultHeap.Buffer;
+                }
             }
         }
     }
