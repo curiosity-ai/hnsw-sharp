@@ -188,6 +188,11 @@ namespace HNSW.Net.HybridBenchmark
             double recall1 = (double)correct1 / total;
             double recall10 = (double)correct10 / total;
             Console.WriteLine($"[Configuration M={M}, EfConstruction={EfConstruction}, EfSearch={EfSearch}, OptimizeForFiltering={OptimizeForFiltering}] Recall@1: {recall1:P2}, Recall@10: {recall10:P2}");
+
+            string workingDir = Path.Combine(Path.GetTempPath(), "hnsw-bench");
+            if (!Directory.Exists(workingDir)) Directory.CreateDirectory(workingDir);
+            File.WriteAllText(Path.Combine(workingDir, $"Recall_{M}_{EfConstruction}_{EfSearch}_{OptimizeForFiltering}_Recall@1.txt"), recall1.ToString());
+            File.WriteAllText(Path.Combine(workingDir, $"Recall_{M}_{EfConstruction}_{EfSearch}_{OptimizeForFiltering}_Recall@10.txt"), recall10.ToString());
         }
     }
 
@@ -203,5 +208,51 @@ namespace HNSW.Net.HybridBenchmark
                 _sw.Restart();
             }
         }
+    }
+
+    public class RecallColumn : BenchmarkDotNet.Columns.IColumn
+    {
+        private readonly string _columnName;
+        private readonly string _recallKey;
+
+        public RecallColumn(string columnName, string recallKey)
+        {
+            _columnName = columnName;
+            _recallKey = recallKey;
+        }
+
+        public string Id => nameof(RecallColumn) + "." + _columnName;
+        public string ColumnName => _columnName;
+        public bool AlwaysShow => true;
+        public BenchmarkDotNet.Columns.ColumnCategory Category => BenchmarkDotNet.Columns.ColumnCategory.Metric;
+        public int PriorityInCategory => 0;
+        public bool IsNumeric => true;
+        public BenchmarkDotNet.Columns.UnitType UnitType => BenchmarkDotNet.Columns.UnitType.Dimensionless;
+        public string Legend => _columnName;
+
+        public string GetValue(BenchmarkDotNet.Reports.Summary summary, BenchmarkDotNet.Running.BenchmarkCase benchmarkCase)
+        {
+            var m = benchmarkCase.Parameters["M"]?.ToString();
+            var efConstruction = benchmarkCase.Parameters["EfConstruction"]?.ToString();
+            var efSearch = benchmarkCase.Parameters["EfSearch"]?.ToString();
+            var optimizeForFiltering = benchmarkCase.Parameters["OptimizeForFiltering"]?.ToString();
+
+            string fileName = $"Recall_{m}_{efConstruction}_{efSearch}_{optimizeForFiltering}_{_recallKey}.txt";
+            string workingDir = Path.Combine(Path.GetTempPath(), "hnsw-bench");
+            string path = Path.Combine(workingDir, fileName);
+
+            if (File.Exists(path))
+            {
+                if (double.TryParse(File.ReadAllText(path), out double val))
+                {
+                    return val.ToString("P2");
+                }
+            }
+            return "N/A";
+        }
+
+        public string GetValue(BenchmarkDotNet.Reports.Summary summary, BenchmarkDotNet.Running.BenchmarkCase benchmarkCase, BenchmarkDotNet.Reports.SummaryStyle style) => GetValue(summary, benchmarkCase);
+        public bool IsDefault(BenchmarkDotNet.Reports.Summary summary, BenchmarkDotNet.Running.BenchmarkCase benchmarkCase) => false;
+        public bool IsAvailable(BenchmarkDotNet.Reports.Summary summary) => true;
     }
 }
