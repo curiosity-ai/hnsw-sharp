@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using HNSW.Net;
 
 namespace HNSW.Net.HybridPareto
@@ -22,8 +24,9 @@ namespace HNSW.Net.HybridPareto
         public int EfSearch { get; set; }
         public int Gamma { get; set; }
         public int Mb { get; set; }
+        public int Limit { get; set; }
         public double Qps { get; set; }
-        public double RecallAt10 { get; set; }
+        public double Recall { get; set; }
     }
 
     class Program
@@ -81,8 +84,11 @@ namespace HNSW.Net.HybridPareto
             Console.WriteLine($"Subset: {baseVectors.Length}/{baseVectorsFull.Length} base vectors");
             Console.WriteLine($"Subset: {queryVectors.Length}/{queryVectorsFull.Length} query vectors");
 
+            int[] limits = { 10, 100 };
+            int maxLimit = limits.Max();
+
             Console.WriteLine("Computing hybrid ground truth for subset...");
-            var groundTruth = Dataset.ComputeHybridGroundTruth(baseVectors, baseAttributes, queryVectors, queryAttributes, 10);
+            var groundTruth = Dataset.ComputeHybridGroundTruth(baseVectors, baseAttributes, queryVectors, queryAttributes, maxLimit);
 
             var results = new List<Result>();
 
@@ -139,36 +145,39 @@ namespace HNSW.Net.HybridPareto
                                 graph.KNNSearch(q, 10, item => item.Attribute == q.Attribute);
                             }
 
-                            int correct10 = 0;
-                            var swSearch = Stopwatch.StartNew();
-                            for (int i = 0; i < queryItems.Length; i++)
+                            foreach (var limit in limits)
                             {
-                                var queryItem = queryItems[i];
-                                var searchResults = graph.KNNSearch(queryItem, 10, item => item.Attribute == queryItem.Attribute);
-
-                                if (searchResults.Any(r => r.Item.Id == groundTruth[i][0]))
+                                int correct = 0;
+                                var swSearch = Stopwatch.StartNew();
+                                for (int i = 0; i < queryItems.Length; i++)
                                 {
-                                    correct10++;
+                                    var queryItem = queryItems[i];
+                                    var searchResults = graph.KNNSearch(queryItem, limit, item => item.Attribute == queryItem.Attribute);
+
+                                    var groundTruthIds = groundTruth[i].Take(limit).ToList();
+                                    int matchCount = searchResults.Count(r => groundTruthIds.Contains(r.Item.Id));
+                                    correct += matchCount;
                                 }
+                                swSearch.Stop();
+
+                                double recall = (double)correct / (queryItems.Length * limit);
+                                double qps = queryItems.Length / swSearch.Elapsed.TotalSeconds;
+
+                                Console.WriteLine($"  -> Limit {limit} - Recall: {recall:P2}, QPS: {qps:N2}");
+
+                                results.Add(new Result
+                                {
+                                    Method = method,
+                                    M = m,
+                                    EfConstruction = efConstruction,
+                                    EfSearch = efSearch,
+                                    Gamma = gamma,
+                                    Mb = mb,
+                                    Qps = qps,
+                                    Recall = recall,
+                                    Limit = limit
+                                });
                             }
-                            swSearch.Stop();
-
-                            double recall10 = (double)correct10 / queryItems.Length;
-                            double qps = queryItems.Length / swSearch.Elapsed.TotalSeconds;
-
-                            Console.WriteLine($"  -> Recall@10: {recall10:P2}, QPS: {qps:N2}");
-
-                            results.Add(new Result
-                            {
-                                Method = method,
-                                M = m,
-                                EfConstruction = efConstruction,
-                                EfSearch = efSearch,
-                                Gamma = gamma,
-                                Mb = mb,
-                                Qps = qps,
-                                RecallAt10 = recall10
-                            });
                         }
                     }
                 }
@@ -176,12 +185,13 @@ namespace HNSW.Net.HybridPareto
 
             Console.WriteLine("\n--- Pareto Sets ---");
 
-            var groupedResults = results.GroupBy(r => r.Method);
+            var groupedResults = results.GroupBy(r => new { r.Method, r.Limit });
+            var allParetoFronts = new List<Result>();
 
             foreach (var group in groupedResults)
             {
-                Console.WriteLine($"\nMethod: {group.Key}");
-                Console.WriteLine($"{"M",-5} {"EfC",-5} {"EfS",-5} {"Gamma",-6} {"Mb",-4} {"QPS",-10} {"Recall@10",-10}");
+                Console.WriteLine($"\nMethod: {group.Key.Method}, Limit: {group.Key.Limit}");
+                Console.WriteLine($"{"M",-5} {"EfC",-5} {"EfS",-5} {"Gamma",-6} {"Mb",-4} {"QPS",-10} {"Recall",-10}");
 
                 var methodResults = group.ToList();
                 var paretoFront = new List<Result>();
@@ -193,8 +203,8 @@ namespace HNSW.Net.HybridPareto
                     {
                         if (other == r) continue;
 
-                        bool otherIsBetterOrEqual = other.Qps >= r.Qps && other.RecallAt10 >= r.RecallAt10;
-                        bool otherIsStrictlyBetter = other.Qps > r.Qps || other.RecallAt10 > r.RecallAt10;
+                        bool otherIsBetterOrEqual = other.Qps >= r.Qps && other.Recall >= r.Recall;
+                        bool otherIsStrictlyBetter = other.Qps > r.Qps || other.Recall > r.Recall;
 
                         if (otherIsBetterOrEqual && otherIsStrictlyBetter)
                         {
@@ -209,14 +219,111 @@ namespace HNSW.Net.HybridPareto
                     }
                 }
 
-                // Sort Pareto front by Recall@10
-                paretoFront = paretoFront.OrderBy(r => r.RecallAt10).ToList();
+                // Sort Pareto front by Recall
+                paretoFront = paretoFront.OrderBy(r => r.Recall).ToList();
+                allParetoFronts.AddRange(paretoFront);
 
                 foreach (var p in paretoFront)
                 {
-                    Console.WriteLine($"{p.M,-5} {p.EfConstruction,-5} {p.EfSearch,-5} {p.Gamma,-6} {p.Mb,-4} {p.Qps,-10:F2} {p.RecallAt10,-10:P2}");
+                    Console.WriteLine($"{p.M,-5} {p.EfConstruction,-5} {p.EfSearch,-5} {p.Gamma,-6} {p.Mb,-4} {p.Qps,-10:F2} {p.Recall,-10:P2}");
                 }
             }
+
+            GenerateHtmlReport(allParetoFronts);
+        }
+
+        static void GenerateHtmlReport(List<Result> paretoFronts)
+        {
+            var html = new StringBuilder();
+            html.AppendLine("<!DOCTYPE html>");
+            html.AppendLine("<html>");
+            html.AppendLine("<head>");
+            html.AppendLine("    <title>HNSW.Net Hybrid Pareto Results</title>");
+            html.AppendLine("    <script src=\"https://cdn.plot.ly/plotly-latest.min.js\"></script>");
+            html.AppendLine("    <style>");
+            html.AppendLine("        body { font-family: Arial, sans-serif; margin: 20px; }");
+            html.AppendLine("        table { border-collapse: collapse; width: 100%; margin-top: 20px; }");
+            html.AppendLine("        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }");
+            html.AppendLine("        th { background-color: #f2f2f2; }");
+            html.AppendLine("        .plot-container { width: 100%; height: 600px; margin-bottom: 40px; }");
+            html.AppendLine("    </style>");
+            html.AppendLine("</head>");
+            html.AppendLine("<body>");
+            html.AppendLine("    <h1>HNSW.Net Hybrid Pareto Results</h1>");
+
+            // Generate a plot for each method comparing limits
+            var methods = paretoFronts.Select(r => r.Method).Distinct().ToList();
+
+            foreach (var method in methods)
+            {
+                string plotDivId = $"plot_{method.Replace("-", "_")}";
+                html.AppendLine($"    <h2>Method: {method}</h2>");
+                html.AppendLine($"    <div id=\"{plotDivId}\" class=\"plot-container\"></div>");
+            }
+
+            html.AppendLine("    <h2>Data Table</h2>");
+            html.AppendLine("    <table>");
+            html.AppendLine("        <tr><th>Method</th><th>Limit</th><th>M</th><th>EfC</th><th>EfS</th><th>Gamma</th><th>Mb</th><th>Recall</th><th>QPS</th></tr>");
+            foreach (var p in paretoFronts.OrderBy(r => r.Method).ThenBy(r => r.Limit).ThenBy(r => r.Recall))
+            {
+                html.AppendLine($"        <tr><td>{p.Method}</td><td>{p.Limit}</td><td>{p.M}</td><td>{p.EfConstruction}</td><td>{p.EfSearch}</td><td>{p.Gamma}</td><td>{p.Mb}</td><td>{p.Recall:P2}</td><td>{p.Qps:F2}</td></tr>");
+            }
+            html.AppendLine("    </table>");
+
+            html.AppendLine("    <script>");
+
+            foreach (var method in methods)
+            {
+                string plotDivId = $"plot_{method.Replace("-", "_")}";
+                var methodData = paretoFronts.Where(r => r.Method == method).ToList();
+                var limits = methodData.Select(r => r.Limit).Distinct().OrderBy(l => l).ToList();
+
+                var traces = new List<string>();
+                var colors = new Dictionary<int, string> { { 10, "'#fc3988'" }, { 100, "'#61bd73'" } };
+
+                foreach (var limit in limits)
+                {
+                    var limitData = methodData.Where(r => r.Limit == limit).OrderBy(r => r.Recall).ToList();
+                    var xData = JsonSerializer.Serialize(limitData.Select(r => r.Recall));
+                    var yData = JsonSerializer.Serialize(limitData.Select(r => r.Qps));
+                    var textData = JsonSerializer.Serialize(limitData.Select(r => $"ef={r.EfSearch}"));
+                    var color = colors.ContainsKey(limit) ? colors[limit] : "'#1f77b4'";
+
+                    string trace = $@"
+                    {{
+                        x: {xData},
+                        y: {yData},
+                        text: {textData},
+                        mode: 'lines+markers+text',
+                        name: 'Limit: {limit}',
+                        textposition: 'top center',
+                        line: {{ color: {color}, width: 2 }},
+                        marker: {{ size: 6 }}
+                    }}";
+                    traces.Add(trace);
+                }
+
+                html.AppendLine($@"
+                    var data_{plotDivId} = [{string.Join(",", traces)}];
+                    var layout_{plotDivId} = {{
+                        title: '{method} - Query Performance',
+                        hovermode: 'closest',
+                        font: {{ family: 'Arial' }},
+                        plot_bgcolor: '#ffffff',
+                        paper_bgcolor: '#ffffff',
+                        xaxis: {{ title: 'Recall', range: [0, 1], gridcolor: '#eee' }},
+                        yaxis: {{ title: 'QPS', rangemode: 'tozero', gridcolor: '#eee' }}
+                    }};
+                    Plotly.newPlot('{plotDivId}', data_{plotDivId}, layout_{plotDivId});
+                ");
+            }
+
+            html.AppendLine("    </script>");
+            html.AppendLine("</body>");
+            html.AppendLine("</html>");
+
+            File.WriteAllText("results.html", html.ToString());
+            Console.WriteLine("\nGenerated results.html");
         }
     }
 
