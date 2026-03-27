@@ -65,8 +65,8 @@ namespace HNSW.Net.HybridBenchmark
                 _baseVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_base.fvecs"));
                 _queryVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_query.fvecs"));
 
-                int keepBaseVectors = 100_000;
-                int keepQueryVectors = 500;
+                int keepBaseVectors = _baseVectors.Length;
+                int keepQueryVectors = _queryVectors.Length;
 
                 var baseAttributes = Dataset.GenerateRandomAttributes(_baseVectors.Length, seed: 42);
                 var queryAttributes = Dataset.GenerateRandomAttributes(_queryVectors.Length, seed: 43);
