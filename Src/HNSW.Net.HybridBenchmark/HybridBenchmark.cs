@@ -47,6 +47,9 @@ namespace HNSW.Net.HybridBenchmark
         [Params(false, true)]
         public bool OptimizeForFiltering { get; set; }
 
+        [Params(1000, 10_000)]
+        public int ItemsToSearch { get; set; }
+
         public int Gamma { get; set; } = 12; // Typical value for SIFT1M per paper
         public int Mb { get; set; } = 16; // Small multiple of M, typically M, 2M, or 64. Using M.
 
@@ -154,11 +157,14 @@ namespace HNSW.Net.HybridBenchmark
         [Benchmark]
         public void Search()
         {
-            for (int i = 0; i < Math.Min(1000, _queryItems.Length); i++)
+            var c = ItemsToSearch;
+            while(c >= 0)
             {
+                int i = c % _queryItems.Length;
                 var queryItem = _queryItems[i];
                 // Post-filter matching the attribute. With OptimizeForFiltering=true it will do predicate subgraph traversal.
                 _graph.KNNSearch(queryItem, 10, item => item.Attribute == queryItem.Attribute);
+                c--;
             }
         }
 
