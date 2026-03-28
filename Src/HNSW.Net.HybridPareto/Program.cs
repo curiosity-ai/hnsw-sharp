@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using HNSW.Net;
 
 namespace HNSW.Net.HybridPareto
@@ -149,15 +151,15 @@ namespace HNSW.Net.HybridPareto
                             {
                                 int correct = 0;
                                 var swSearch = Stopwatch.StartNew();
-                                for (int i = 0; i < queryItems.Length; i++)
+                                Parallel.For(0, queryItems.Length, i =>
                                 {
                                     var queryItem = queryItems[i];
                                     var searchResults = graph.KNNSearch(queryItem, limit, item => item.Attribute == queryItem.Attribute);
 
                                     var groundTruthIds = groundTruth[i].Take(limit).ToList();
                                     int matchCount = searchResults.Count(r => groundTruthIds.Contains(r.Item.Id));
-                                    correct += matchCount;
-                                }
+                                    Interlocked.Add(ref correct, matchCount);
+                                });
                                 swSearch.Stop();
 
                                 double recall = (double)correct / (queryItems.Length * limit);
