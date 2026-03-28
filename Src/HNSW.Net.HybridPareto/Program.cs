@@ -33,7 +33,7 @@ namespace HNSW.Net.HybridPareto
     {
         static void Main(string[] args)
         {
-            double percentage = 0.01;
+            double percentage = 0.25;
             if (args.Length > 0)
             {
                 if (double.TryParse(args[0], out double parsedPercentage))
@@ -92,7 +92,7 @@ namespace HNSW.Net.HybridPareto
 
             var results = new List<Result>();
 
-            int[] mValues = { 2, 4, 8, 16, 32 };
+            int[] mValues = { 32 };
             int[] efConstructionValues = { 10, 20, 50, 100, 200, 400 };
             int[] efSearchValues = { 10, 20, 50, 100, 200, 400 };
 
