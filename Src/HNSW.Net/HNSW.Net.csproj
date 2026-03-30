@@ -16,9 +16,13 @@
     <RepositoryUrl>https://github.com/curiosity-ai/hnsw.net</RepositoryUrl>
     <PackageTags>kNN, ANN, approximate nearest neighbor</PackageTags>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
- 
-  
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="MessagePack" Version="3.1.0" />
   </ItemGroup>
