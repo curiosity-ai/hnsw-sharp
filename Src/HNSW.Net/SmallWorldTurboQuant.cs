@@ -13,28 +13,21 @@ namespace HNSW.Net
     {
         private SmallWorld<EncodedVector, float> _innerGraph;
         private TurboQuant _quantizer;
-        private IProvideRandomValues _generator;
         private TurboQuantDistance _distance;
-        private bool _threadSafe;
-
         public TurboQuant Quantizer => _quantizer;
-
+        public SmallWorldParameters Parameters => _innerGraph.Parameters;
         public SmallWorldTurboQuant(TurboQuant quantizer, IProvideRandomValues generator, SmallWorldParameters parameters, bool threadSafe = true)
         {
             _quantizer = quantizer ?? throw new ArgumentNullException(nameof(quantizer));
-            _generator = generator;
             _distance = new TurboQuantDistance(_quantizer);
             _innerGraph = new SmallWorld<EncodedVector, float>(_distance.GetDistance, generator, parameters, threadSafe);
-            _threadSafe = threadSafe;
         }
 
         private SmallWorldTurboQuant(TurboQuant quantizer, SmallWorld<EncodedVector, float> innerGraph, IProvideRandomValues generator, bool threadSafe)
         {
             _quantizer = quantizer;
             _innerGraph = innerGraph;
-            _generator = generator;
             _distance = new TurboQuantDistance(_quantizer);
-            _threadSafe = threadSafe;
         }
 
         public IReadOnlyList<int> AddItems(IReadOnlyList<float[]> items, IProgressReporter progressReporter = null)
