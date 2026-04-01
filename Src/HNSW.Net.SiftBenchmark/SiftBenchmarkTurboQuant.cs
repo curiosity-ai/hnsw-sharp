@@ -11,18 +11,18 @@ using HNSW.Net;
 
 namespace HNSW.Net.SiftBenchmark
 {
-    public class SiftBenchmark
+    public class SiftBenchmarkTurboQuant
     {
         private static float[][] _baseVectors;
         private static float[][] _queryVectors;
         private static int[][] _groundTruth;
 
-        private static SmallWorld<float[], float> _cachedGraph;
+        private static SmallWorldTurboQuant _cachedGraph;
         private static (int M, int EfConstruction) _cachedGraphParams;
 
-        private SmallWorld<float[], float> _graph;
+        private SmallWorldTurboQuant _graph;
 
-        [Params(16)]
+        [Params(32)]
         public int M { get; set; }
 
         [Params(200)]
@@ -42,6 +42,7 @@ namespace HNSW.Net.SiftBenchmark
             Dataset.DownloadAndExtractAsync(workingDir).GetAwaiter().GetResult();
 
             string siftDir = Path.Combine(workingDir, "sift");
+
             if (_baseVectors == null)
             {
                 Console.WriteLine("Reading dataset...");
@@ -62,6 +63,40 @@ namespace HNSW.Net.SiftBenchmark
 
                 Console.WriteLine($"Loaded {_baseVectors.Length} base vectors");
                 Console.WriteLine($"Loaded {_queryVectors.Length} query vectors");
+
+                Console.WriteLine("Normalizing dataset for TurboQuant...");
+                for (int i = 0; i < _baseVectors.Length; i++)
+                {
+                    float norm = 0;
+                    for (int j = 0; j < _baseVectors[i].Length; j++)
+                    {
+                        norm += _baseVectors[i][j] * _baseVectors[i][j];
+                    }
+                    norm = (float)Math.Sqrt(norm);
+                    if (norm > 0)
+                    {
+                        for (int j = 0; j < _baseVectors[i].Length; j++)
+                        {
+                            _baseVectors[i][j] /= norm;
+                        }
+                    }
+                }
+                for (int i = 0; i < _queryVectors.Length; i++)
+                {
+                    float norm = 0;
+                    for (int j = 0; j < _queryVectors[i].Length; j++)
+                    {
+                        norm += _queryVectors[i][j] * _queryVectors[i][j];
+                    }
+                    norm = (float)Math.Sqrt(norm);
+                    if (norm > 0)
+                    {
+                        for (int j = 0; j < _queryVectors[i].Length; j++)
+                        {
+                            _queryVectors[i][j] /= norm;
+                        }
+                    }
+                }
             }
 
             if (_cachedGraph == null || _cachedGraphParams.M != M || _cachedGraphParams.EfConstruction != EfConstruction)
@@ -75,12 +110,13 @@ namespace HNSW.Net.SiftBenchmark
                     EnableDistanceCacheForConstruction = true
                 };
 
-                Console.WriteLine($"Building graph with M={M}, EfConstruction={EfConstruction}...");
+                Console.WriteLine($"Building TurboQuant graph with M={M}, EfConstruction={EfConstruction}...");
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                var graph = new SmallWorld<float[], float>(L2Distance.SIMD, DefaultRandomGenerator.Instance, parameters);
+                var quantizer = TurboQuant.Create(_baseVectors[0].Length, DefaultRandomGenerator.Instance);
+                var graph = new SmallWorldTurboQuant(quantizer, DefaultRandomGenerator.Instance, parameters, false);
                 graph.AddItems(_baseVectors, new ConsoleProgress());
                 sw.Stop();
-                Console.WriteLine($"Graph built in {sw.Elapsed.TotalSeconds:N2}s.");
+                Console.WriteLine($"TurboQuant Graph built in {sw.Elapsed.TotalSeconds:N2}s.");
 
                 _cachedGraph = graph;
                 _cachedGraphParams = (M, EfConstruction);
@@ -121,9 +157,9 @@ namespace HNSW.Net.SiftBenchmark
                 }
             }
 
-            double recall1 = (double)correct1 / total;
+            double recall1  = (double)correct1 / total;
             double recall10 = (double)correct10 / total;
-            Console.WriteLine($"[Configuration M={M}, EfConstruction={EfConstruction}, EfSearch={EfSearch}] Recall@1: {recall1:P2}, Recall@10: {recall10:P2}");
+            Console.WriteLine($"[TurboQuant] [Configuration M={M}, EfConstruction={EfConstruction}, EfSearch={EfSearch}] Recall@1: {recall1:P2}, Recall@10: {recall10:P2}");
         }
     }
 }

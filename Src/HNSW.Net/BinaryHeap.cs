@@ -15,7 +15,7 @@ namespace HNSW.Net
     /// </summary>
     /// <typeparam name="T">The type of the items in the source list.</typeparam>
     [SuppressMessage("Performance", "CA1815:Override equals and operator equals on value types", Justification = "By design")]
-    internal struct BinaryHeap
+    internal class BinaryHeap
     {
         internal IComparer<int> Comparer;
         internal List<int> Buffer;
@@ -25,7 +25,15 @@ namespace HNSW.Net
         {
             Buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
             Comparer = comparer;
-            for (int i = 1; i < Buffer.Count; ++i) { SiftUp(i); }
+            //for (int i = 1; i < Buffer.Count; ++i) { SiftUp(i); }
+
+            var span = CollectionsMarshal.AsSpan(Buffer);
+
+            // Bottom-up heapify: O(n)
+            for (int i = (span.Length >> 1) - 1; i >= 0; i--)
+            {
+                SiftDown(span, i, comparer);
+            }
         }
 
         internal void Push(int item)
@@ -83,6 +91,38 @@ namespace HNSW.Net
             }
         }
 
+        private static void SiftDown(Span<int> buffer, int i, IComparer<int> comparer)
+        {
+            int count = buffer.Length;
+            int value = buffer[i];
+
+            while (true)
+            {
+                int left = (i << 1) + 1;
+                if (left >= count)
+                    break;
+
+                int right = left + 1;
+                int bestChild = left;
+
+                if (right < count && comparer.Compare(buffer[right], buffer[left]) > 0)
+                    bestChild = right;
+
+                if (comparer.Compare(buffer[bestChild], value) <= 0)
+                    break;
+
+                buffer[i] = buffer[bestChild];
+                i = bestChild;
+            }
+
+            buffer[i] = value;
+        }
+
+        private static void Swap(Span<int> buffer, int i, int j)
+        {
+            (buffer[i], buffer[j]) = (buffer[j], buffer[i]);
+        }
+
         /// <summary>
         /// Restores the heap property starting from i'th position up to the head given that the upstream items fulfill the rule.
         /// </summary>
@@ -102,13 +142,6 @@ namespace HNSW.Net
                 Swap(bufferSpan, i, p);
                 i = p;
             }
-        }
-
-        private static void Swap(Span<int> buffer, int i, int j)
-        {
-            var temp = buffer[i];
-            buffer[i] = buffer[j];
-            buffer[j] = temp;
         }
     }
 }
