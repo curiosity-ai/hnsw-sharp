@@ -35,7 +35,7 @@ namespace HNSW.Net.HybridPareto
     {
         static void Main(string[] args)
         {
-            double percentage = 0.25;
+            double percentage = 0.05;
             if (args.Length > 0)
             {
                 if (double.TryParse(args[0], out double parsedPercentage))
@@ -95,8 +95,8 @@ namespace HNSW.Net.HybridPareto
             var results = new List<Result>();
 
             int[] mValues = { 32 };
-            int[] efConstructionValues = { 10, 20, 50, 100, 200, 400 };
-            int[] efSearchValues = { 10, 20, 50, 100, 200, 400 };
+            int[] efConstructionValues = { 50, 100, 200, 400 };
+            int[] efSearchValues = { 50, 100, 200, 400 };
 
             float DistanceFunc(Item a, Item b) => L2Distance.SIMD(a.Vector, b.Vector);
 
@@ -104,14 +104,14 @@ namespace HNSW.Net.HybridPareto
             {
                 foreach (var efConstruction in efConstructionValues)
                 {
-                    // Define configurations:
                     // (MethodName, OptimizeForFiltering, Gamma, Mb)
                     var configurations = new[]
                     {
-                        ("HNSW", false, 0, 0),
-                        ("ACORN-1", true, 1, m),
-                        ("ACORN-Gamma12", true, 12, m),
-                        ("ACORN-Gamma24", true, 24, m)
+                        ("HNSW-post-filtering", false, 0, 0),
+                        ("HNSW-pre-filtering",  false, 0, 0),
+                        ("ACORN-1",             true,  1, 2*m),
+                        ("ACORN-Gamma12",       true, 12, 2*m),
+                        ("ACORN-Gamma24",       true, 24, 2*m)
                     };
 
                     foreach (var (method, optimizeForFiltering, gamma, mb) in configurations)
@@ -126,6 +126,8 @@ namespace HNSW.Net.HybridPareto
                             Gamma = gamma,
                             Mb = mb
                         };
+
+                        bool hnswPostFiltering = method == "HNSW-post-filtering";
 
                         Console.WriteLine($"\nBuilding {method} graph with M={m}, EfConstruction={efConstruction}...");
                         var swBuild = Stopwatch.StartNew();
@@ -150,16 +152,29 @@ namespace HNSW.Net.HybridPareto
                             foreach (var limit in limits)
                             {
                                 int correct = 0;
+                                
                                 var swSearch = Stopwatch.StartNew();
+
                                 Parallel.For(0, queryItems.Length, i =>
                                 {
                                     var queryItem = queryItems[i];
-                                    var searchResults = graph.KNNSearch(queryItem, limit, item => item.Attribute == queryItem.Attribute);
+                                    IList<SmallWorld<Item, float>.KNNSearchResult> searchResults;
+                                    
+                                    if (hnswPostFiltering)
+                                    { 
+                                        searchResults = graph.KNNSearch(queryItem, limit);
+                                        searchResults = searchResults.Where(sr => sr.Item.Attribute == queryItem.Attribute).ToList();
+                                    }
+                                    else
+                                    {
+                                        searchResults = graph.KNNSearch(queryItem, limit, item => item.Attribute == queryItem.Attribute);
+                                    }
 
-                                    var groundTruthIds = groundTruth[i].Take(limit).ToList();
+                                    var groundTruthIds = groundTruth[i].Take(limit).ToHashSet();
                                     int matchCount = searchResults.Count(r => groundTruthIds.Contains(r.Item.Id));
                                     Interlocked.Add(ref correct, matchCount);
                                 });
+
                                 swSearch.Stop();
 
                                 double recall = (double)correct / (queryItems.Length * limit);
