@@ -23,7 +23,9 @@ namespace HNSW.Net
         /// <returns>Distance between u and v.</returns>
         public float GetDistance(EncodedVector u, EncodedVector v)
         {
-            return 1f - _quantizer.ApproxDot(u, v);
+            float dot = _quantizer.ApproxDot(u, v);
+            float dist = u.Norm * u.Norm + v.Norm * v.Norm - 2f * dot;
+            return dist < 0f ? 0f : dist;
         }
     }
 }

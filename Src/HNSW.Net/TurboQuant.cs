@@ -217,9 +217,14 @@ public sealed class TurboQuant
                 differingBits += BitOperations.PopCount((uint)(minSpanA[j] ^ minSpanB[j]));
             }
 
-            // agreeMinusDisagree = (Total Valid Bits) - 2 * (Differing Bits)
-            int agreeMinusDisagree = _residualProjections - (2 * differingBits);
-            float correction = (float)agreeMinusDisagree / _residualProjections;
+            // The 1-bit sketch estimates the cosine of the angle between residuals:
+            // cos(theta) = cos(PI * differingBits / totalBits)
+            float correction = MathF.Cos(MathF.PI * differingBits / _residualProjections);
+
+            // Theoretical upper bound for MSE distortion of 3-bit Lloyd-Max:
+            // D_mse = sqrt(3)*pi/2 * (1/4^3) approx 0.0425
+            // So average squared norm of residual is roughly this value, but we just use 1/16f as an approximate scale factor here
+            // based on the original heuristic.
             result += a.Norm * b.Norm * correction / 16f;
         }
 
