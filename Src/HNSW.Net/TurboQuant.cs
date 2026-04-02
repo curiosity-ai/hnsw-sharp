@@ -91,7 +91,7 @@ public sealed class TurboQuant
         return new TurboQuant(dimension, bits, residualProjections, rotationSigns, codebook, thresholds, residualProjection);
     }
 
-    public EncodedVector Encode(ReadOnlySpan<float> vector)
+    public EncodedVector Encode(ReadOnlySpan<float> vector, bool isQuery = false)
     {
         if (vector.Length != _dimension)
             throw new ArgumentException($"Expected vector length {_dimension}.");
@@ -122,19 +122,34 @@ public sealed class TurboQuant
         }
 
         byte[] residualBits = null;
+        float[] queryProjections = null;
 
         if (_residualProjections > 0 && _residualProjection is not null)
         {
-            var residual = new float[_dimension];
-            for (int i = 0; i < _dimension; i++)
+            if (isQuery)
             {
-                residual[i] = rotated[i] - reconstructedRotated[i];
+                queryProjections = new float[_residualProjections];
+                for (int r = 0; r < _residualProjections; r++)
+                {
+                    float dot = 0f;
+                    var row = _residualProjection[r];
+                    for (int c = 0; c < _dimension; c++)
+                        dot += row[c] * rotated[c];
+                    queryProjections[r] = dot;
+                }
             }
-
-            residualBits = ProjectToSignBits(residual, _residualProjection);
+            else
+            {
+                var residual = new float[_dimension];
+                for (int i = 0; i < _dimension; i++)
+                {
+                    residual[i] = rotated[i] - reconstructedRotated[i];
+                }
+                residualBits = ProjectToSignBits(residual, _residualProjection);
+            }
         }
 
-        return new EncodedVector(norm, indices, residualBits);
+        return new EncodedVector(norm, indices, residualBits, queryProjections);
     }
 
     public float[] Decode(EncodedVector encoded)
@@ -193,39 +208,42 @@ public sealed class TurboQuant
 
         float result = a.Norm * b.Norm * baseDot;
 
-        // Stage 2: Hardware Intrinsic PopCount for Residual Sketch
-        if (_residualProjections > 0 && a.ResidualBits != null && b.ResidualBits != null)
+        // Stage 2: QJL asymmetric error correction
+        if (_residualProjections > 0)
         {
-            int len = Math.Min(a.ResidualBits.Length, b.ResidualBits.Length);
-            ReadOnlySpan<byte> minSpanA = new ReadOnlySpan<byte>(a.ResidualBits, 0, len);
-            ReadOnlySpan<byte> minSpanB = new ReadOnlySpan<byte>(b.ResidualBits, 0, len);
-
-            ReadOnlySpan<ulong> ulongA = MemoryMarshal.Cast<byte, ulong>(minSpanA);
-            ReadOnlySpan<ulong> ulongB = MemoryMarshal.Cast<byte, ulong>(minSpanB);
-
-            int differingBits = 0;
-            for (int j = 0; j < ulongA.Length; j++)
+            if (a.QueryProjections != null && b.ResidualBits != null)
             {
-                differingBits += BitOperations.PopCount(ulongA[j] ^ ulongB[j]);
+                float correction = 0f;
+                for (int r = 0; r < _residualProjections; r++)
+                {
+                    bool sign = (b.ResidualBits[r >> 3] & (1 << (r & 7))) != 0;
+                    float b_K = sign ? 1f : -1f;
+                    correction += a.QueryProjections[r] * b_K;
+                }
+                correction /= _residualProjections;
+
+                // For QJL with 1-bit sign, the unbiased estimator scales by sqrt(pi/2) * ||e||.
+                // Assuming roughly constant residual norm for 3-bit quantization.
+                // MSE is roughly 0.0425, so norm is sqrt(0.0425) approx 0.206.
+                // sqrt(pi/2) * 0.206 approx 0.258.
+                // We'll scale the correction appropriately.
+                float scale = MathF.Sqrt(MathF.PI / 2f) * 0.206f;
+                result += a.Norm * b.Norm * correction * scale;
             }
-
-            // Handle trailing bytes that didn't fit neatly into 8-byte ulong blocks
-            int remainingBytesStart = ulongA.Length * 8;
-
-            for (int j = remainingBytesStart; j < len; j++)
+            else if (b.QueryProjections != null && a.ResidualBits != null)
             {
-                differingBits += BitOperations.PopCount((uint)(minSpanA[j] ^ minSpanB[j]));
+                float correction = 0f;
+                for (int r = 0; r < _residualProjections; r++)
+                {
+                    bool sign = (a.ResidualBits[r >> 3] & (1 << (r & 7))) != 0;
+                    float b_K = sign ? 1f : -1f;
+                    correction += b.QueryProjections[r] * b_K;
+                }
+                correction /= _residualProjections;
+
+                float scale = MathF.Sqrt(MathF.PI / 2f) * 0.206f;
+                result += a.Norm * b.Norm * correction * scale;
             }
-
-            // The 1-bit sketch estimates the cosine of the angle between residuals:
-            // cos(theta) = cos(PI * differingBits / totalBits)
-            float correction = MathF.Cos(MathF.PI * differingBits / _residualProjections);
-
-            // Theoretical upper bound for MSE distortion of 3-bit Lloyd-Max:
-            // D_mse = sqrt(3)*pi/2 * (1/4^3) approx 0.0425
-            // So average squared norm of residual is roughly this value, but we just use 1/16f as an approximate scale factor here
-            // based on the original heuristic.
-            result += a.Norm * b.Norm * correction / 16f;
         }
 
         return result;
@@ -609,14 +627,16 @@ public sealed class EncodedVector
     public float Norm { get; }
     public byte[] Indices { get; }
     public byte[] ResidualBits { get; }
-    public EncodedVector(float norm, byte[] indices, byte[] residualBits)
+    public float[] QueryProjections { get; }
+    public EncodedVector(float norm, byte[] indices, byte[] residualBits, float[] queryProjections = null)
     {
         Norm = norm;
         Indices = indices;
         ResidualBits = residualBits;
+        QueryProjections = queryProjections;
     }
 
-    public int ApproxCompressedBytes => sizeof(float) + sizeof(int) + Indices.Length + (ResidualBits?.Length ?? 0);
+    public int ApproxCompressedBytes => sizeof(float) + sizeof(int) + Indices.Length + (ResidualBits?.Length ?? 0) + (QueryProjections?.Length * sizeof(float) ?? 0);
 
     public byte[] ToByteArray()
     {

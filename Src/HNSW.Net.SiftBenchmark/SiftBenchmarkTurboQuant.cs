@@ -63,40 +63,6 @@ namespace HNSW.Net.SiftBenchmark
 
                 Console.WriteLine($"Loaded {_baseVectors.Length} base vectors");
                 Console.WriteLine($"Loaded {_queryVectors.Length} query vectors");
-
-                Console.WriteLine("Normalizing dataset for TurboQuant...");
-                for (int i = 0; i < _baseVectors.Length; i++)
-                {
-                    float norm = 0;
-                    for (int j = 0; j < _baseVectors[i].Length; j++)
-                    {
-                        norm += _baseVectors[i][j] * _baseVectors[i][j];
-                    }
-                    norm = (float)Math.Sqrt(norm);
-                    if (norm > 0)
-                    {
-                        for (int j = 0; j < _baseVectors[i].Length; j++)
-                        {
-                            _baseVectors[i][j] /= norm;
-                        }
-                    }
-                }
-                for (int i = 0; i < _queryVectors.Length; i++)
-                {
-                    float norm = 0;
-                    for (int j = 0; j < _queryVectors[i].Length; j++)
-                    {
-                        norm += _queryVectors[i][j] * _queryVectors[i][j];
-                    }
-                    norm = (float)Math.Sqrt(norm);
-                    if (norm > 0)
-                    {
-                        for (int j = 0; j < _queryVectors[i].Length; j++)
-                        {
-                            _queryVectors[i][j] /= norm;
-                        }
-                    }
-                }
             }
 
             if (_cachedGraph == null || _cachedGraphParams.M != M || _cachedGraphParams.EfConstruction != EfConstruction)
@@ -112,7 +78,7 @@ namespace HNSW.Net.SiftBenchmark
 
                 Console.WriteLine($"Building TurboQuant graph with M={M}, EfConstruction={EfConstruction}...");
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                var quantizer = TurboQuant.Create(_baseVectors[0].Length, DefaultRandomGenerator.Instance);
+                var quantizer = TurboQuant.Create(_baseVectors[0].Length, DefaultRandomGenerator.Instance, bits: 3, residualProjections: 64);
                 var graph = new SmallWorldTurboQuant(quantizer, DefaultRandomGenerator.Instance, parameters, false);
                 graph.AddItems(_baseVectors, new ConsoleProgress());
                 sw.Stop();
