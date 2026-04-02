@@ -42,7 +42,7 @@ namespace HNSW.Net
 
         public IList<SmallWorld<EncodedVector, float>.KNNSearchResult> KNNSearch(float[] item, int k, Func<EncodedVector, bool> filterItem = null, CancellationToken cancellationToken = default)
         {
-            var encodedItem = _quantizer.Encode(item);
+            var encodedItem = _quantizer.Encode(item, isQuery: true);
             return _innerGraph.KNNSearch(encodedItem, k, filterItem, cancellationToken);
         }
 
