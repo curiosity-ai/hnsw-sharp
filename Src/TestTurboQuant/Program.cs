@@ -7,7 +7,7 @@ class Program
     static void Main()
     {
         int dim = 128;
-        var tq = TurboQuant.Create(dim, DefaultRandomGenerator.Instance, bits: 3, residualProjections: 0);
+        var tq = new TurboQuant(dim, 42);
         
         var rnd = new Random(42);
         

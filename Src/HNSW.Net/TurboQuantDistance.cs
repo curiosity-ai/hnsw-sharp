@@ -21,7 +21,7 @@ namespace HNSW.Net
         /// <param name="u">Left encoded vector.</param>
         /// <param name="v">Right encoded vector.</param>
         /// <returns>Distance between u and v.</returns>
-        public float GetDistance(EncodedVector u, EncodedVector v)
+                public float GetDistance(EncodedVector u, EncodedVector v)
         {
             float dot = _quantizer.ApproxDot(u, v);
             float dist = u.Norm * u.Norm + v.Norm * v.Norm - 2f * dot;

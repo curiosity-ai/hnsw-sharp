@@ -1,4 +1,6 @@
-// Copyright (c) 2025 Relatude.DB - Proventus AS
+import re
+
+content = """// Copyright (c) 2025 Relatude.DB - Proventus AS
 // Licensed under the MIT License. https://github.com/Relatude/Relatude.DB/blob/main/LICENSE.txt
 
 using System.Collections.Generic;
@@ -561,10 +563,9 @@ public sealed class TurboQuant
         return result;
     }
 
-        public float ApproxDot(EncodedVector a, EncodedVector b)
+    public float ApproxDot(EncodedVector a, EncodedVector b)
     {
-        float[] decA = Decode(a);
-        return ApproxDot(decA, b);
+        throw new NotSupportedException("TurboQuant v2 uses query vs encoded distance calculation. ApproxDot(a, b) not fully analogous.");
     }
 
     public float ApproxDot(ReadOnlySpan<float> q, EncodedVector encoded)
@@ -653,3 +654,7 @@ public sealed class TurboQuant
         return new TurboQuant(dimension, seed);
     }
 }
+"""
+
+with open("Src/HNSW.Net/TurboQuant.cs", "w") as f:
+    f.write(content)
