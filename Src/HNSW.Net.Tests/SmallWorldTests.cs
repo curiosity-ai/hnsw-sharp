@@ -112,6 +112,43 @@ namespace HNSW.Net.Tests
         }
 
         /// <summary>
+        /// Verifies that enabling early termination preserves a high recall against the exhaustive search baseline.
+        /// </summary>
+        [DataTestMethod]
+        [DataRow(0)]   // adaptive patience
+        [DataRow(4)]   // explicit (aggressive) patience
+        [DataRow(16)]  // explicit (conservative) patience
+        public void KNNSearchEarlyTerminationRecallTest(int patience)
+        {
+            const int k = 20;
+
+            var baselineParams = new SmallWorldParameters();
+            var baseline = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, baselineParams);
+            baseline.AddItems(vectors);
+
+            var earlyParams = new SmallWorldParameters
+            {
+                EnableEarlyTermination = true,
+                EarlyTerminationPatience = patience,
+            };
+            var early = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, earlyParams);
+            early.AddItems(vectors);
+
+            int totalOverlap = 0;
+            for (int i = 0; i < vectors.Count; ++i)
+            {
+                var expected = baseline.KNNSearch(vectors[i], k).Select(r => r.Id).ToHashSet();
+                var actual = early.KNNSearch(vectors[i], k).Select(r => r.Id).ToList();
+
+                Assert.AreEqual(k, actual.Count);
+                totalOverlap += actual.Count(expected.Contains);
+            }
+
+            double recall = (double)totalOverlap / (vectors.Count * k);
+            Assert.IsTrue(recall >= 0.85, $"Recall {recall:p2} with early termination (patience {patience}) is below the 85% threshold.");
+        }
+
+        /// <summary>
         /// Serialization deserialization tests.
         /// </summary>
         [TestMethod]

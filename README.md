@@ -31,6 +31,17 @@ float[] query = Enumerable.Repeat(1f, 100).ToArray();
 var best20 = graph.KNNSearch(query, 20);
 var best1 = best20.OrderBy(r => r.Distance).First();
 ```
+##### How to speed up search with early termination?
+KNN search can stop traversing the graph once the result set has stopped improving, trading a little recall for fewer distance computations (see the [Manticore write-up](https://manticoresearch.com/blog/knn-early-termination/) and "Patience in Proximity", Teofili &amp; Lin, ECIR 2025). The savings grow with `k` and `EfSearch`. It is disabled by default.
+```c#
+var parameters = new SmallWorld<float[], float>.Parameters()
+{
+  EfSearch = 100,
+  EnableEarlyTermination = true,             // turn the optimization on
+  EarlyTerminationSaturationThreshold = 0.95, // optional: fraction of top-k left unchanged to count a hop as "non-improving"
+  EarlyTerminationPatience = 0,               // optional: consecutive non-improving hops before stopping (0 = adaptive, scales with EfSearch)
+};
+```
 ##### How to (de)serialize the graph?
 ```c#
 SmallWorld<float[], float> graph = GetGraph();

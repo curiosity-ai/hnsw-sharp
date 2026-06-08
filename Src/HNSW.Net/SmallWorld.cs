@@ -274,7 +274,38 @@ namespace HNSW.Net
             OptimizeForFiltering = false;
             Gamma = 1;
             Mb = 10;
+            EnableEarlyTermination = false;
+            EarlyTerminationSaturationThreshold = 0.95;
+            EarlyTerminationPatience = 0;
         }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the layer-0 search should stop early once the result set has
+        /// stopped improving ("patience" based early termination, see https://manticoresearch.com/blog/knn-early-termination/
+        /// and "Patience in Proximity", Teofili &amp; Lin, ECIR 2025).
+        /// While traversing the graph the saturation of the result set is tracked on every hop: once the fraction of
+        /// the top-k that stayed unchanged stays at or above <see cref="EarlyTerminationSaturationThreshold"/> for
+        /// <see cref="EarlyTerminationPatience"/> consecutive hops, the search stops. This trades a small amount of
+        /// recall for fewer distance computations, with the largest savings as k and efSearch grow.
+        /// Disabled by default to preserve the exact, exhaustive search behaviour.
+        /// </summary>
+        public bool EnableEarlyTermination { get; set; }
+
+        /// <summary>
+        /// Gets or sets the saturation ratio (in the range (0, 1]) that a search hop must reach to be counted as
+        /// "non-improving" when <see cref="EnableEarlyTermination"/> is enabled. The saturation of a hop is the
+        /// fraction of the current top-k results that were left unchanged by that hop, so a value closer to 1 makes
+        /// early termination more conservative (higher recall, less speed-up). Defaults to 0.95.
+        /// </summary>
+        public double EarlyTerminationSaturationThreshold { get; set; }
+
+        /// <summary>
+        /// Gets or sets the number of consecutive non-improving (saturated) hops that must be observed before the
+        /// search terminates early when <see cref="EnableEarlyTermination"/> is enabled. A value of 0 (the default)
+        /// selects an adaptive patience that scales inversely with efSearch (≈9 at low ef down to 6 at very high ef),
+        /// matching the behaviour described in the Manticore/ECIR work. Larger values are more conservative.
+        /// </summary>
+        public int EarlyTerminationPatience { get; set; }
 
         /// <summary>
         /// Gets or sets whether the graph should be constructed for filtering, according to ACORN (https://arxiv.org/html/2403.04871v1).
