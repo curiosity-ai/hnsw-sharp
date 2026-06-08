@@ -221,7 +221,7 @@ namespace HNSW.Net
                         }
 
                         var efSearch = Math.Max(k, Parameters.EfSearch);
-                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, efSearch, ref _version, versionNow, keepResultInner, cancellationToken);
+                        visitedNodesCount += searcher.RunKnnAtLayer(bestPeer.Id, destinationTravelingCosts, resultIds, 0, efSearch, ref _version, versionNow, keepResultInner, cancellationToken, enableEarlyTermination: Parameters.EnableEarlyTermination);
                         
                         GraphSearchEventSource.Instance?.GraphKNearestVisitedNodesReporter?.Invoke(visitedNodesCount);
 

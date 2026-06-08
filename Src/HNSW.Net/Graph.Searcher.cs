@@ -45,8 +45,9 @@ namespace HNSW.Net
             /// <param name="layer">The layer to perform search at.</param>
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
             /// <param name="version">The version of the graph, will retry the search if the version changed</param>
+            /// <param name="enableEarlyTermination">Whether to stop the traversal early once the result set stops improving (see <see cref="SmallWorldParameters.EnableEarlyTermination"/>).</param>
             /// <returns>The number of expanded nodes during the run.</returns>
-            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult, CancellationToken cancellationToken = default)
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult, CancellationToken cancellationToken = default, bool enableEarlyTermination = false)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -86,6 +87,14 @@ namespace HNSW.Net
                 expansionHeap.Push(entryPointId);
                 VisitedSet.Add(entryPointId);
 
+                // Early termination ("patience") state: once the result set stops improving for a sustained
+                // number of consecutive hops we stop exploring. Only meaningful while collecting more than a single
+                // result (k > 1); the greedy ef=1 descents already terminate as soon as no closer node is found.
+                double saturationThreshold = Core.Parameters.EarlyTerminationSaturationThreshold;
+                int patience = enableEarlyTermination && k > 1 ? ResolvePatience(Core.Parameters.EarlyTerminationPatience, k) : 0;
+                bool earlyTermination = patience > 0;
+                int consecutiveSaturatedHops = 0;
+
                 try
                 {
                     // run bfs
@@ -98,6 +107,9 @@ namespace HNSW.Net
                         }
 
                         GraphChangedException.ThrowIfChanged(ref version, versionAtStart);
+
+                        // number of top-k results changed by expanding the current candidate (used for early termination)
+                        int resultChangesThisHop = 0;
 
                         // get next candidate to check and expand
                         var toExpandId = expansionHeap.Pop();
@@ -227,6 +239,7 @@ namespace HNSW.Net
                                     if (keepResult(neighbourId))
                                     {
                                         resultHeap.Push(neighbourId);
+                                        ++resultChangesThisHop;
                                     }
 
                                     if (resultHeap.Buffer.Count > k)
@@ -240,6 +253,26 @@ namespace HNSW.Net
                                 VisitedSet.Add(neighbourId);
                             }
                         }
+
+                        // Patience based early termination: once the result set is full, measure how saturated it is
+                        // after this hop (the fraction of the top-k that stayed unchanged). When the result set stays
+                        // saturated for `patience` consecutive hops it is unlikely further exploration improves the
+                        // result, so we stop. A single improving hop resets the patience window.
+                        if (earlyTermination && resultHeap.Buffer.Count >= k)
+                        {
+                            double saturation = (double)(resultHeap.Buffer.Count - resultChangesThisHop) / resultHeap.Buffer.Count;
+                            if (saturation >= saturationThreshold)
+                            {
+                                if (++consecutiveSaturatedHops >= patience)
+                                {
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                consecutiveSaturatedHops = 0;
+                            }
+                        }
                     }
 
                     ExpansionBuffer.Clear();
@@ -248,12 +281,32 @@ namespace HNSW.Net
                     
                     return visitedNodesCount;
                 }
-                catch (Exception ex) 
+                catch (Exception ex)
                 {
                     //Throws if the collection changed, otherwise propagates the original exception
                     GraphChangedException.ThrowIfChanged(ref version, versionAtStart);
                     throw;
                 }
+            }
+
+            /// <summary>
+            /// Resolves the number of consecutive non-improving hops allowed before the search terminates early.
+            /// A configured value of 0 or less selects an adaptive patience that scales inversely with the
+            /// exploration factor (ef), ranging from ~9 at low ef down to 6 at very high ef, matching the behaviour
+            /// described in https://manticoresearch.com/blog/knn-early-termination/.
+            /// </summary>
+            /// <param name="configuredPatience">The user configured patience, or 0/negative for adaptive.</param>
+            /// <param name="ef">The exploration factor (number of candidates kept) for this search.</param>
+            private static int ResolvePatience(int configuredPatience, int ef)
+            {
+                if (configuredPatience > 0)
+                {
+                    return configuredPatience;
+                }
+
+                // Adaptive: more exploration (higher ef) means more evidence per decision, so less patience is needed.
+                int adaptive = (int)Math.Round(9.0 - Math.Log(Math.Max(ef, 1) / 16.0, 2.0));
+                return Math.Min(9, Math.Max(6, adaptive));
             }
         }
     }
