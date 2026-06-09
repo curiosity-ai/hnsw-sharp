@@ -1,4 +1,4 @@
-﻿// <copyright file="Graph.Searcher.cs" company="Microsoft">
+// <copyright file="Graph.Searcher.cs" company="Microsoft">
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 // </copyright>
@@ -7,7 +7,7 @@ namespace HNSW.Net
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
+    using System.Runtime.CompilerServices;
     using System.Threading;
 
     /// <content>
@@ -16,38 +16,69 @@ namespace HNSW.Net
     internal partial class Graph<TItem, TDistance>
     {
         /// <summary>
-        /// The graph searcher.
+        /// The graph searcher. Holds the reusable per-search scratch state (expansion frontier and
+        /// visited marks) so that running a query allocates (almost) nothing. Instances are pooled
+        /// by <see cref="Core"/> and are not thread-safe; a searcher must be used by one search at a time.
         /// </summary>
-        internal struct Searcher
+        internal sealed class Searcher
         {
             private readonly Core Core;
-            private readonly List<int> ExpansionBuffer;
-            private readonly VisitedBitSet VisitedSet;
+            private readonly List<Candidate<TDistance>> ExpansionBuffer;
+
+            // Epoch based visited set: a node is visited in the current search iff VisitedMarks[id] == VisitedEpoch.
+            // Resetting between searches is O(1) (bump the epoch) instead of clearing a bit set proportional
+            // to the size of the graph.
+            private int[] VisitedMarks;
+            private int VisitedEpoch;
 
             /// <summary>
-            /// Initializes a new instance of the <see cref="Searcher"/> struct.
+            /// Initializes a new instance of the <see cref="Searcher"/> class.
             /// </summary>
             /// <param name="core">The core of the graph.</param>
             internal Searcher(Core core)
             {
                 Core = core;
-                ExpansionBuffer = new List<int>();
-                VisitedSet = new VisitedBitSet(core.Nodes.Count);
+                ExpansionBuffer = new List<Candidate<TDistance>>();
+                VisitedMarks = new int[Math.Max(1024, core.Nodes.Count)];
+                VisitedEpoch = 0;
+            }
+
+            private void Reset()
+            {
+                ExpansionBuffer.Clear();
+
+                int nodesCount = Core.Nodes.Count;
+                if (VisitedMarks.Length < nodesCount)
+                {
+                    VisitedMarks = new int[Math.Max(nodesCount, VisitedMarks.Length * 2)];
+                    VisitedEpoch = 0;
+                }
+
+                if (VisitedEpoch == int.MaxValue)
+                {
+                    Array.Clear(VisitedMarks, 0, VisitedMarks.Length);
+                    VisitedEpoch = 0;
+                }
+
+                ++VisitedEpoch;
             }
 
             /// <summary>
             /// The implementaiton of SEARCH-LAYER(q, ep, ef, lc) algorithm.
             /// Article: Section 4. Algorithm 2.
+            /// The distance from the query to every node is computed exactly once (when the node is first
+            /// visited) and is carried together with the node id through the candidate heaps.
             /// </summary>
             /// <param name="entryPointId">The identifier of the entry point for the search.</param>
             /// <param name="targetCosts">The traveling costs for the search target.</param>
-            /// <param name="resultList">The list of identifiers of the nearest neighbours at the level.</param>
+            /// <param name="resultList">The list of candidates (id + distance) of the nearest neighbours at the level. Cleared on entry; left in max-heap order (farthest on top).</param>
             /// <param name="layer">The layer to perform search at.</param>
             /// <param name="k">The number of the nearest neighbours to get from the layer.</param>
             /// <param name="version">The version of the graph, will retry the search if the version changed</param>
+            /// <param name="keepResult">Optional filter: nodes are added to the result set only when it returns true. Pass null to keep everything.</param>
             /// <param name="enableEarlyTermination">Whether to stop the traversal early once the result set stops improving (see <see cref="SmallWorldParameters.EnableEarlyTermination"/>).</param>
             /// <returns>The number of expanded nodes during the run.</returns>
-            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<int> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult, CancellationToken cancellationToken = default, bool enableEarlyTermination = false)
+            internal int RunKnnAtLayer(int entryPointId, TravelingCosts<int, TDistance> targetCosts, List<Candidate<TDistance>> resultList, int layer, int k, ref long version, long versionAtStart, Func<int, bool> keepResult, CancellationToken cancellationToken = default, bool enableEarlyTermination = false)
             {
                 /*
                  * v ← ep // set of visited elements
@@ -70,22 +101,21 @@ namespace HNSW.Net
                  * return W
                  */
 
-                // prepare tools
-                IComparer<int> fartherIsOnTop = targetCosts;
-                IComparer<int> closerIsOnTop = fartherIsOnTop.Reverse();
+                Reset();
+                resultList.Clear();
 
-                // prepare collections
-                // TODO: Optimize by providing buffers
-                var resultHeap    = new BinaryHeap(resultList, fartherIsOnTop);
-                var expansionHeap = new BinaryHeap(ExpansionBuffer, closerIsOnTop);
+                var resultHeap = new CandidateMaxHeap<TDistance>(resultList);
+                var expansionHeap = new CandidateMinHeap<TDistance>(ExpansionBuffer);
 
-                if (keepResult(entryPointId))
+                var entryPoint = new Candidate<TDistance>(targetCosts.From(entryPointId), entryPointId);
+
+                if (keepResult is null || keepResult(entryPointId))
                 {
-                    resultHeap.Push(entryPointId);
+                    resultHeap.Push(entryPoint);
                 }
 
-                expansionHeap.Push(entryPointId);
-                VisitedSet.Add(entryPointId);
+                expansionHeap.Push(entryPoint);
+                VisitedMarks[entryPointId] = VisitedEpoch;
 
                 // Early termination ("patience") state: once the result set stops improving for a sustained
                 // number of consecutive hops we stop exploring. Only meaningful while collecting more than a single
@@ -95,11 +125,13 @@ namespace HNSW.Net
                 bool earlyTermination = patience > 0;
                 int consecutiveSaturatedHops = 0;
 
+                bool optimizeForFiltering = Core.Parameters.OptimizeForFiltering;
+
                 try
                 {
                     // run bfs
                     int visitedNodesCount = 1;
-                    while (expansionHeap.Buffer.Count > 0)
+                    while (expansionHeap.Count > 0)
                     {
                         if (cancellationToken.IsCancellationRequested)
                         {
@@ -112,145 +144,44 @@ namespace HNSW.Net
                         int resultChangesThisHop = 0;
 
                         // get next candidate to check and expand
-                        var toExpandId = expansionHeap.Pop();
-                        var farthestResultId = resultHeap.Buffer.Count > 0 ? resultHeap.Buffer[0] : -1;
-                        if (farthestResultId >= 0 && DistanceUtils.GreaterThan(targetCosts.From(toExpandId), targetCosts.From(farthestResultId)))
+                        var toExpand = expansionHeap.Pop();
+                        if (resultHeap.Count > 0 && DistanceUtils.GreaterThan(toExpand.Distance, resultHeap.Top.Distance))
                         {
                             // the closest candidate is farther than farthest result
                             break;
                         }
 
-                        // expand candidate
-                        var rawNeighboursIds = Core.Nodes[toExpandId].EnumerateLayer(layer);
-
-                        IEnumerable<int> neighboursIds = rawNeighboursIds.ToArray();
-
-                        // Apply ACORN filtering (https://arxiv.org/html/2403.04871v1)
-                        if (Core.Parameters.OptimizeForFiltering)
+                        if (optimizeForFiltering)
                         {
-                            int targetM = layer == 0 ? 2 * Core.Parameters.M : Core.Parameters.M;
-                            var rawArr = rawNeighboursIds.ToArray();
-
-                            if (layer > 0)
+                            // Apply ACORN filtering (https://arxiv.org/html/2403.04871v1)
+                            var neighboursIds = SelectAcornNeighbours(toExpand.Id, layer, keepResult);
+                            foreach (var neighbourId in neighboursIds)
                             {
-                                var filtered = new List<int>();
-                                foreach (var n in rawArr)
+                                if (cancellationToken.IsCancellationRequested)
                                 {
-                                    if (keepResult(n))
-                                    {
-                                        filtered.Add(n);
-                                        if (filtered.Count >= targetM)
-                                            break;
-                                    }
+                                    return visitedNodesCount;
                                 }
-                                neighboursIds = filtered;
-                            }
-                            else
-                            {
-                                var filtered = new List<int>();
 
-                                if (Core.Parameters.Gamma == 1) // ACORN-1
+                                if (VisitedMarks[neighbourId] != VisitedEpoch)
                                 {
-                                    foreach (var n in rawArr)
-                                    {
-                                        if (keepResult(n))
-                                        {
-                                            filtered.Add(n);
-                                            if (filtered.Count >= targetM)
-                                                break;
-                                        }
-                                        else
-                                        {
-                                            var twoHop = Core.Nodes[n].EnumerateLayer(layer);
-                                            foreach (var nn in twoHop)
-                                            {
-                                                if (keepResult(nn) && !filtered.Contains(nn))
-                                                {
-                                                    filtered.Add(nn);
-                                                    if (filtered.Count >= targetM)
-                                                    {
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            if (filtered.Count >= targetM)
-                                            {
-                                                break;
-                                            }
-                                        }
-                                    }
+                                    VisitedMarks[neighbourId] = VisitedEpoch;
+                                    ++visitedNodesCount;
+                                    resultChangesThisHop += ProcessNeighbour(neighbourId, targetCosts, ref resultHeap, ref expansionHeap, k, keepResult);
                                 }
-                                else // ACORN-gamma
-                                {
-                                    int mb = Math.Min(Core.Parameters.Mb, rawArr.Length);
-
-                                    for (int i = 0; i < mb; i++)
-                                    {
-                                        if (keepResult(rawArr[i]))
-                                        {
-                                            filtered.Add(rawArr[i]);
-                                        }
-                                    }
-
-                                    if (filtered.Count < targetM && rawArr.Length > mb)
-                                    {
-                                        for (int i = mb; i < rawArr.Length; i++)
-                                        {
-                                            int n = rawArr[i];
-                                            var twoHop = Core.Nodes[n].EnumerateLayer(layer);
-                                            foreach (var nn in twoHop)
-                                            {
-                                                if (keepResult(nn) && !filtered.Contains(nn))
-                                                {
-                                                    filtered.Add(nn);
-                                                    if (filtered.Count >= targetM)
-                                                    {
-                                                        break;
-                                                    }
-                                                }
-                                            }
-
-                                            if (filtered.Count >= targetM)
-                                            {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                neighboursIds = filtered;
                             }
                         }
-
-                        foreach(var neighbourId in neighboursIds) 
+                        else
                         {
-                            if (cancellationToken.IsCancellationRequested)
+                            var neighbours = Core.Nodes[toExpand.Id].EnumerateLayer(layer);
+                            for (int i = 0; i < neighbours.Length; ++i)
                             {
-                                return visitedNodesCount;
-                            }
-
-                            if (!VisitedSet.Contains(neighbourId))
-                            {
-                                // enqueue perspective neighbours to expansion list
-                                farthestResultId = resultHeap.Buffer.Count > 0 ? resultHeap.Buffer[0] : -1;
-                                if (resultHeap.Buffer.Count < k || (farthestResultId >= 0 && DistanceUtils.LowerThan(targetCosts.From(neighbourId), targetCosts.From(farthestResultId))))
+                                int neighbourId = neighbours[i];
+                                if (VisitedMarks[neighbourId] != VisitedEpoch)
                                 {
-                                    expansionHeap.Push(neighbourId);
-                                    
-                                    if (keepResult(neighbourId))
-                                    {
-                                        resultHeap.Push(neighbourId);
-                                        ++resultChangesThisHop;
-                                    }
-
-                                    if (resultHeap.Buffer.Count > k)
-                                    {
-                                        resultHeap.Pop();
-                                    }
+                                    VisitedMarks[neighbourId] = VisitedEpoch;
+                                    ++visitedNodesCount;
+                                    resultChangesThisHop += ProcessNeighbour(neighbourId, targetCosts, ref resultHeap, ref expansionHeap, k, keepResult);
                                 }
-
-                                // update visited list
-                                ++visitedNodesCount;
-                                VisitedSet.Add(neighbourId);
                             }
                         }
 
@@ -258,9 +189,9 @@ namespace HNSW.Net
                         // after this hop (the fraction of the top-k that stayed unchanged). When the result set stays
                         // saturated for `patience` consecutive hops it is unlikely further exploration improves the
                         // result, so we stop. A single improving hop resets the patience window.
-                        if (earlyTermination && resultHeap.Buffer.Count >= k)
+                        if (earlyTermination && resultHeap.Count >= k)
                         {
-                            double saturation = (double)(resultHeap.Buffer.Count - resultChangesThisHop) / resultHeap.Buffer.Count;
+                            double saturation = (double)(resultHeap.Count - resultChangesThisHop) / resultHeap.Count;
                             if (saturation >= saturationThreshold)
                             {
                                 if (++consecutiveSaturatedHops >= patience)
@@ -276,17 +207,139 @@ namespace HNSW.Net
                     }
 
                     ExpansionBuffer.Clear();
-                    VisitedSet.Clear();
 
-                    
                     return visitedNodesCount;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     //Throws if the collection changed, otherwise propagates the original exception
                     GraphChangedException.ThrowIfChanged(ref version, versionAtStart);
                     throw;
                 }
+            }
+
+            /// <summary>
+            /// Evaluates a single not-yet-visited neighbour: computes its distance to the query once and
+            /// inserts it into the expansion frontier / result set when it can improve the result.
+            /// Returns 1 when the result set changed, 0 otherwise.
+            /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private int ProcessNeighbour(int neighbourId, TravelingCosts<int, TDistance> targetCosts, ref CandidateMaxHeap<TDistance> resultHeap, ref CandidateMinHeap<TDistance> expansionHeap, int k, Func<int, bool> keepResult)
+            {
+                var neighbourDistance = targetCosts.From(neighbourId);
+                if (resultHeap.Count < k || DistanceUtils.LowerThan(neighbourDistance, resultHeap.Top.Distance))
+                {
+                    var neighbour = new Candidate<TDistance>(neighbourDistance, neighbourId);
+                    expansionHeap.Push(neighbour);
+
+                    if (keepResult is null || keepResult(neighbourId))
+                    {
+                        resultHeap.Push(neighbour);
+                        if (resultHeap.Count > k)
+                        {
+                            resultHeap.Pop();
+                        }
+
+                        return 1;
+                    }
+                }
+
+                return 0;
+            }
+
+            /// <summary>
+            /// Selects the neighbours to traverse from an expanded node when ACORN filtering is active
+            /// (https://arxiv.org/html/2403.04871v1).
+            /// </summary>
+            private List<int> SelectAcornNeighbours(int toExpandId, int layer, Func<int, bool> filter)
+            {
+                Func<int, bool> keepResult = filter ?? (static _ => true);
+                var rawNeighbours = Core.Nodes[toExpandId].EnumerateLayer(layer);
+                int targetM = layer == 0 ? 2 * Core.Parameters.M : Core.Parameters.M;
+                var filtered = new List<int>();
+
+                if (layer > 0)
+                {
+                    foreach (var n in rawNeighbours)
+                    {
+                        if (keepResult(n))
+                        {
+                            filtered.Add(n);
+                            if (filtered.Count >= targetM)
+                                break;
+                        }
+                    }
+                }
+                else if (Core.Parameters.Gamma == 1) // ACORN-1
+                {
+                    foreach (var n in rawNeighbours)
+                    {
+                        if (keepResult(n))
+                        {
+                            filtered.Add(n);
+                            if (filtered.Count >= targetM)
+                                break;
+                        }
+                        else
+                        {
+                            var twoHop = Core.Nodes[n].EnumerateLayer(layer);
+                            foreach (var nn in twoHop)
+                            {
+                                if (keepResult(nn) && !filtered.Contains(nn))
+                                {
+                                    filtered.Add(nn);
+                                    if (filtered.Count >= targetM)
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+                            if (filtered.Count >= targetM)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                else // ACORN-gamma
+                {
+                    int mb = Math.Min(Core.Parameters.Mb, rawNeighbours.Length);
+
+                    for (int i = 0; i < mb; i++)
+                    {
+                        if (keepResult(rawNeighbours[i]))
+                        {
+                            filtered.Add(rawNeighbours[i]);
+                        }
+                    }
+
+                    if (filtered.Count < targetM && rawNeighbours.Length > mb)
+                    {
+                        for (int i = mb; i < rawNeighbours.Length; i++)
+                        {
+                            int n = rawNeighbours[i];
+                            var twoHop = Core.Nodes[n].EnumerateLayer(layer);
+                            foreach (var nn in twoHop)
+                            {
+                                if (keepResult(nn) && !filtered.Contains(nn))
+                                {
+                                    filtered.Add(nn);
+                                    if (filtered.Count >= targetM)
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (filtered.Count >= targetM)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                return filtered;
             }
 
             /// <summary>

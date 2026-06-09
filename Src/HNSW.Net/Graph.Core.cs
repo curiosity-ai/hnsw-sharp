@@ -22,9 +22,16 @@ namespace HNSW.Net
         {
             private readonly Func<TItem, TItem, TDistance> Distance;
 
+            // cached delegate to avoid allocating one per GetDistance call
+            private readonly Func<int, int, TDistance> GetDistanceSkipCacheFunc;
+
             private DistanceCache<TDistance> DistanceCache;
 
             private long DistanceCalculationsCount;
+
+            // Pool of searchers so that concurrent queries reuse the (graph sized) scratch buffers
+            // instead of allocating them on every call.
+            private readonly System.Collections.Concurrent.ConcurrentBag<Searcher> SearcherPool = new System.Collections.Concurrent.ConcurrentBag<Searcher>();
 
             internal List<Node> Nodes { get; private set; }
 
@@ -40,7 +47,8 @@ namespace HNSW.Net
             {
                 Distance = distance;
                 Parameters = parameters;
-                
+                GetDistanceSkipCacheFunc = GetDistanceSkipCache;
+
                 var initialSize = Math.Max(1024, parameters.InitialItemsSize);
 
                 Nodes = new List<Node>(initialSize);
@@ -63,7 +71,10 @@ namespace HNSW.Net
                 if (Parameters.EnableDistanceCacheForConstruction)
                 {
                     DistanceCache = new DistanceCache<TDistance>();
-                    DistanceCache.Resize(parameters.InitialDistanceCacheSize, false);
+
+                    // InitialDistanceCacheSize is the number of cache entries (not points): passing it
+                    // through Resize would square it and eagerly allocate gigabytes for the default settings.
+                    DistanceCache.ResizeToEntries(parameters.InitialDistanceCacheSize, false);
                 }
 
                 DistanceCalculationsCount = 0;
@@ -75,7 +86,10 @@ namespace HNSW.Net
 
                 var newIDs = new List<int>();
                 Items.AddRange(items);
-                DistanceCache?.Resize(newCount, false);
+
+                // size the cache for the total number of points in the graph, so the hit rate
+                // does not degrade as the graph grows incrementally
+                DistanceCache?.Resize(Items.Count, false);
 
                 int id0 = Nodes.Count;
 
@@ -85,6 +99,16 @@ namespace HNSW.Net
                     newIDs.Add(id0 + id);
                 }
                 return newIDs;
+            }
+
+            internal Searcher RentSearcher()
+            {
+                return SearcherPool.TryTake(out var searcher) ? searcher : new Searcher(this);
+            }
+
+            internal void ReturnSearcher(Searcher searcher)
+            {
+                SearcherPool.Add(searcher);
             }
 
             internal void ResizeDistanceCache(int newSize)
@@ -153,7 +177,7 @@ namespace HNSW.Net
                 DistanceCalculationsCount++;
                 if (DistanceCache is object)
                 {
-                    return DistanceCache.GetOrCacheValue(fromId, toId, GetDistanceSkipCache);
+                    return DistanceCache.GetOrCacheValue(fromId, toId, GetDistanceSkipCacheFunc);
                 }
                 else
                 {
