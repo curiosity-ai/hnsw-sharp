@@ -16,7 +16,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".azuredevops", ".azuredevop
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HNSW.Net.TestFiltering", "HNSW.Net.TestFiltering\HNSW.Net.TestFiltering.csproj", "{3D3E2F64-B88B-4E53-B9DD-27870B6D98AA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HNSW.Net.SiftBenchmark", "HNSW.Net.SiftBenchmark\HNSW.Net.SiftBenchmark.csproj", "{04E62DE0-8D42-48BE-B375-3270150672A3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HNSW.Net.AnnBenchmark", "HNSW.Net.AnnBenchmark\HNSW.Net.AnnBenchmark.csproj", "{04E62DE0-8D42-48BE-B375-3270150672A3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HNSW.Net.HybridBenchmark", "HNSW.Net.HybridBenchmark\HNSW.Net.HybridBenchmark.csproj", "{514D7B3B-2F70-4F98-9BFF-C8750F5C839F}"
 EndProject

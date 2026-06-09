@@ -2,7 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
-namespace HNSW.Net.SiftBenchmark
+namespace HNSW.Net.AnnBenchmark
 {
     public static class L2Distance
     {

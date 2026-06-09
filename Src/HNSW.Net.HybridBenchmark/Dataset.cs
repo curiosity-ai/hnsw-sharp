@@ -1,15 +1,20 @@
 using System;
 using System.Collections.Generic;
-using System.Formats.Tar;
 using System.IO;
-using System.IO.Compression;
-using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
+using PureHDF;
 
 namespace HNSW.Net.HybridBenchmark
 {
     public static class Dataset
     {
+        // Smallest Euclidean dataset in ANN-Benchmarks (https://github.com/erikbern/ann-benchmarks):
+        // Fashion-MNIST (784 dims, 60,000 base / 10,000 query). Used as the dense vector source for
+        // the attribute-filtered hybrid search benchmark (which generates its own attributes/ground truth).
+        private const string FileName = "fashion-mnist-784-euclidean.hdf5";
+        private const string DownloadUrl = "http://ann-benchmarks.com/fashion-mnist-784-euclidean.hdf5";
+
         public static int[] GenerateRandomAttributes(int count, int seed = 42)
         {
             var random = new Random(seed);
@@ -58,40 +63,30 @@ namespace HNSW.Net.HybridBenchmark
             Console.WriteLine("Finished computing hybrid ground truth.");
             return groundTruth;
         }
-        public static float[][] ReadFvecs(string path)
+        /// <summary>Reads the base ("train") and query ("test") vectors from the HDF5 dataset.</summary>
+        public static (float[][] baseVectors, float[][] queryVectors) ReadVectors(string path)
         {
-            using var stream = File.OpenRead(path);
-            using var reader = new BinaryReader(stream);
-            var results = new List<float[]>();
-            while (stream.Position < stream.Length)
-            {
-                int dim = reader.ReadInt32();
-                var vector = new float[dim];
-                for (int i = 0; i < dim; i++)
-                {
-                    vector[i] = reader.ReadSingle();
-                }
-                results.Add(vector);
-            }
-            return results.ToArray();
+            using var file = H5File.OpenRead(path);
+            var baseVectors = ReadFloatMatrix(file.Dataset("train"));
+            var queryVectors = ReadFloatMatrix(file.Dataset("test"));
+            return (baseVectors, queryVectors);
         }
 
-        public static int[][] ReadIvecs(string path)
+        private static float[][] ReadFloatMatrix(IH5Dataset dataset)
         {
-            using var stream = File.OpenRead(path);
-            using var reader = new BinaryReader(stream);
-            var results = new List<int[]>();
-            while (stream.Position < stream.Length)
+            var dims = dataset.Space.Dimensions;
+            int rows = (int)dims[0];
+            int cols = (int)dims[1];
+            var flat = dataset.Read<float[]>();
+
+            var result = new float[rows][];
+            for (int r = 0; r < rows; r++)
             {
-                int dim = reader.ReadInt32();
-                var vector = new int[dim];
-                for (int i = 0; i < dim; i++)
-                {
-                    vector[i] = reader.ReadInt32();
-                }
-                results.Add(vector);
+                var row = new float[cols];
+                Array.Copy(flat, (long)r * cols, row, 0, cols);
+                result[r] = row;
             }
-            return results.ToArray();
+            return result;
         }
 
         public static void SaveGroundTruth(int[][] groundTruth, string path)
@@ -129,27 +124,31 @@ namespace HNSW.Net.HybridBenchmark
             return groundTruth;
         }
 
-        public static async Task DownloadAndExtractAsync(string workingDir)
+        /// <summary>Ensures the HDF5 dataset exists locally (downloading it if needed) and returns its path.</summary>
+        public static string EnsureDownloaded(string workingDir)
         {
-            string tarPath = Path.Combine(workingDir, "sift.tar.gz");
-            if (!File.Exists(tarPath))
+            string path = Path.Combine(workingDir, FileName);
+            if (!File.Exists(path))
             {
-                Console.WriteLine("Downloading Sift1M dataset...");
-                using var client = new FluentFTP.AsyncFtpClient("ftp.irisa.fr");
-                await client.Connect();
-                await client.DownloadFile(tarPath, "/local/texmex/corpus/sift.tar.gz");
-                await client.Disconnect();
+                Console.WriteLine($"Downloading {FileName} from {DownloadUrl} ...");
+                DownloadAsync(DownloadUrl, path).GetAwaiter().GetResult();
             }
+            return path;
+        }
 
-            // Check if extracted files already exist to avoid re-extracting
-            string baseFile = Path.Combine(workingDir, "sift", "sift_base.fvecs");
-            if (!File.Exists(baseFile))
+        private static async Task DownloadAsync(string url, string path)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            string tmp = path + ".part";
+            await using (var src = await response.Content.ReadAsStreamAsync())
+            await using (var dst = File.Create(tmp))
             {
-                Console.WriteLine("Extracting Sift1M dataset...");
-                using var fsIn = File.OpenRead(tarPath);
-                using var gzipStream = new GZipStream(fsIn, CompressionMode.Decompress);
-                TarFile.ExtractToDirectory(gzipStream, workingDir, true);
+                await src.CopyToAsync(dst);
             }
+            File.Move(tmp, path, overwrite: true);
         }
     }
 }

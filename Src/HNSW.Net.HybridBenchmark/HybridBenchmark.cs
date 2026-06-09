@@ -59,14 +59,12 @@ namespace HNSW.Net.HybridBenchmark
             string workingDir = Path.Combine(Path.GetTempPath(), "hnsw-bench");
             if (!Directory.Exists(workingDir)) Directory.CreateDirectory(workingDir);
 
-            Dataset.DownloadAndExtractAsync(workingDir).GetAwaiter().GetResult();
+            string datasetPath = Dataset.EnsureDownloaded(workingDir);
 
-            string siftDir = Path.Combine(workingDir, "sift");
             if (_baseVectors == null)
             {
                 Console.WriteLine("Reading dataset...");
-                _baseVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_base.fvecs"));
-                _queryVectors = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_query.fvecs"));
+                (_baseVectors, _queryVectors) = Dataset.ReadVectors(datasetPath);
 
                 int keepBaseVectors = _baseVectors.Length;
                 int keepQueryVectors = _queryVectors.Length;
