@@ -48,17 +48,15 @@ namespace HNSW.Net.HybridPareto
                 }
             }
 
-            Console.WriteLine($"Using {percentage:P} of the SIFT dataset.");
+            Console.WriteLine($"Using {percentage:P} of the Fashion-MNIST dataset.");
 
             string workingDir = Path.Combine(Path.GetTempPath(), "hnsw-bench");
             if (!Directory.Exists(workingDir)) Directory.CreateDirectory(workingDir);
 
-            Dataset.DownloadAndExtractAsync(workingDir).GetAwaiter().GetResult();
+            string datasetPath = Dataset.EnsureDownloaded(workingDir);
 
-            string siftDir = Path.Combine(workingDir, "sift");
             Console.WriteLine("Reading dataset...");
-            var baseVectorsFull = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_base.fvecs"));
-            var queryVectorsFull = Dataset.ReadFvecs(Path.Combine(siftDir, "sift_query.fvecs"));
+            var (baseVectorsFull, queryVectorsFull) = Dataset.ReadVectors(datasetPath);
 
             int keepBaseVectors = (int)(baseVectorsFull.Length * percentage);
             int keepQueryVectors = (int)(queryVectorsFull.Length * percentage);

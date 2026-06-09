@@ -268,7 +268,7 @@ namespace HNSW.Net
             EfSearch = 50;
             ExpandBestSelection = false;
             KeepPrunedConnections = false;
-            EnableDistanceCacheForConstruction = true;
+            EnableDistanceCacheForConstruction = false;
             InitialDistanceCacheSize = 1024 * 1024;
             InitialItemsSize = 1024;
             OptimizeForFiltering = false;
@@ -361,6 +361,8 @@ namespace HNSW.Net
 
         /// <summary>
         /// Gets or sets a value indicating whether to cache calculated distances at graph construction time.
+        /// Since the search now computes the distance to each visited node exactly once, the cache rarely pays
+        /// for its memory footprint and lookup cost, so it is disabled by default.
         /// </summary>
         public bool EnableDistanceCacheForConstruction { get; set; }
 

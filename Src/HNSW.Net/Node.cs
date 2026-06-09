@@ -99,7 +99,7 @@ namespace HNSW.Net
         {
             get
             {
-                return _connections is object ? _connections[layer].ToArray().AsSpan() : _cache.GetLayer(_bucketIndex, _position, layer, _maxLayers);
+                return EnumerateLayer(layer);
             }
         }
 
@@ -111,8 +111,9 @@ namespace HNSW.Net
             }
             else
             {
-                var l = _connections[layer];
-                return l.ToArray().AsSpan();
+                // The span aliases the live connection list (no copy); it is only valid until the
+                // connections of this node are modified.
+                return System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_connections[layer]);
             }
         }
 

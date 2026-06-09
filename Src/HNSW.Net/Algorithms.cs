@@ -1,4 +1,4 @@
-﻿// <copyright file="Node.cs" company="Microsoft">
+// <copyright file="Node.cs" company="Microsoft">
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 // </copyright>
@@ -20,6 +20,10 @@ namespace HNSW.Net
             protected readonly Graph<TItem, TDistance>.Core GraphCore;
 
             protected readonly Func<int, int, TDistance> NodeDistance;
+
+            // Scratch buffers for Connect. Graph construction is single-writer, so reusing them is safe.
+            private readonly List<Candidate<TDistance>> _connectCandidates = new List<Candidate<TDistance>>();
+            private readonly List<int> _connectSelected = new List<int>();
 
             public Algorithm(Graph<TItem, TDistance>.Core graphCore)
             {
@@ -49,11 +53,11 @@ namespace HNSW.Net
             /// <summary>
             /// The algorithm which selects best neighbours from the candidates for the given node.
             /// </summary>
-            /// <param name="candidatesIds">The identifiers of candidates to neighbourhood.</param>
-            /// <param name="travelingCosts">Traveling costs to compare candidates.</param>
+            /// <param name="candidates">The candidates to the neighbourhood together with their distances to the target node. The list may be reordered in place.</param>
+            /// <param name="targetId">The identifier of the node the neighbourhood is being built for.</param>
             /// <param name="layer">The layer of the neighbourhood.</param>
-            /// <returns>Best nodes selected from the candidates.</returns>
-            internal abstract List<int> SelectBestForConnecting(List<int> candidatesIds, TravelingCosts<int, TDistance> travelingCosts, int layer);
+            /// <param name="output">The list to fill with the identifiers of the selected neighbours. Cleared on entry.</param>
+            internal abstract void SelectBestForConnecting(List<Candidate<TDistance>> candidates, int targetId, int layer, List<int> output);
 
             /// <summary>
             /// Get maximum allowed connections for the given level.
@@ -91,11 +95,56 @@ namespace HNSW.Net
                 nodeLayer.Add(neighbour.Id);
                 if (nodeLayer.Count > GetM(layer))
                 {
-                    var travelingCosts = new TravelingCosts<int, TDistance>(NodeDistance, node.Id);
-                    node.SetLayer(layer, SelectBestForConnecting(nodeLayer, travelingCosts, layer));
+                    _connectCandidates.Clear();
+                    foreach (var candidateId in nodeLayer)
+                    {
+                        _connectCandidates.Add(new Candidate<TDistance>(NodeDistance(node.Id, candidateId), candidateId));
+                    }
+
+                    SelectBestForConnecting(_connectCandidates, node.Id, layer, _connectSelected);
+
+                    nodeLayer.Clear();
+                    nodeLayer.AddRange(_connectSelected);
+                    node.SetLayer(layer, nodeLayer);
+                }
+            }
+
+            /// <summary>
+            /// ACORN-gamma compression heuristic for layer 0 (https://arxiv.org/html/2403.04871v1).
+            /// Expects the candidates to be sorted by ascending distance to the target.
+            /// </summary>
+            protected void AcornCompress(List<Candidate<TDistance>> sortedCandidates, int layer, int bestN, List<int> output)
+            {
+                int mb = GraphCore.Parameters.Mb;
+
+                for (int i = 0; i < Math.Min(mb, sortedCandidates.Count); i++)
+                {
+                    output.Add(sortedCandidates[i].Id);
+                }
+
+                var h = new HashSet<int>();
+                for (int i = mb; i < sortedCandidates.Count; i++)
+                {
+                    if (output.Count + h.Count >= bestN)
+                    {
+                        break;
+                    }
+
+                    int c = sortedCandidates[i].Id;
+                    if (h.Contains(c))
+                    {
+                        continue;
+                    }
+
+                    output.Add(c);
+
+                    var neighbors = GraphCore.Nodes[c].EnumerateLayer(layer);
+                    foreach (var neighbor in neighbors)
+                    {
+                        h.Add(neighbor);
+                    }
                 }
             }
         }
-
     }
 }

@@ -53,9 +53,29 @@ namespace HNSW.Net
         {
             if (pointsCount <= 0) { pointsCount = 1024; }
 
-            long capacity = ((long)pointsCount * (pointsCount + 1)) >> 1;
-            
-            capacity = capacity < DistanceCacheLimits.MaxArrayLength ? capacity : DistanceCacheLimits.MaxArrayLength;
+            long pairCount = ((long)pointsCount * (pointsCount + 1)) >> 1;
+            ResizeToEntries(pairCount, overwrite);
+        }
+
+        /// <summary>
+        /// Resizes the cache to hold (at least) the given number of entries.
+        /// The capacity is rounded up to a power of two (the lookup indexes with a bit mask)
+        /// and capped at <see cref="DistanceCacheLimits.MaxArrayLength"/>.
+        /// </summary>
+        internal void ResizeToEntries(long entriesCount, bool overwrite)
+        {
+            if (entriesCount <= 0) { entriesCount = 1024; }
+
+            long capacity;
+            if (entriesCount >= DistanceCacheLimits.MaxArrayLength)
+            {
+                capacity = DistanceCacheLimits.MaxArrayLength;
+            }
+            else
+            {
+                capacity = (long)System.Numerics.BitOperations.RoundUpToPowerOf2((ulong)entriesCount);
+                capacity = capacity < DistanceCacheLimits.MaxArrayLength ? capacity : DistanceCacheLimits.MaxArrayLength;
+            }
 
             if (_keys is null || capacity > _keys.Length || overwrite)
             {

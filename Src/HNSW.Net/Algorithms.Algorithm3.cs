@@ -1,4 +1,4 @@
-﻿// <copyright file="Node.Algorithm3.cs" company="Microsoft">
+// <copyright file="Node.Algorithm3.cs" company="Microsoft">
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 // </copyright>
@@ -23,64 +23,29 @@ namespace HNSW.Net
             }
 
             /// <inheritdoc/>
-            internal override List<int> SelectBestForConnecting(List<int> candidatesIds, TravelingCosts<int, TDistance> travelingCosts, int layer)
+            internal override void SelectBestForConnecting(List<Candidate<TDistance>> candidates, int targetId, int layer, List<int> output)
             {
                 /*
                  * q ← this
                  * return M nearest elements from C to q
                  */
 
+                output.Clear();
+
                 var bestN = GetM(layer);
-                var candidatesHeap = new BinaryHeap(candidatesIds, travelingCosts);
+                candidates.Sort(CandidateComparer<TDistance>.Instance);
 
                 // ACORN-gamma compression heuristic for layer 0 (https://arxiv.org/html/2403.04871v1)
                 if (GraphCore.Parameters.OptimizeForFiltering && layer == 0 && GraphCore.Parameters.Gamma > 1)
                 {
-                    var sortedCandidates = new List<int>(candidatesHeap.Buffer);
-                    sortedCandidates.Sort((a, b) => travelingCosts.From(a).CompareTo(travelingCosts.From(b)));
-
-                    int mb = GraphCore.Parameters.Mb;
-                    var result = new List<int>(bestN);
-
-                    for (int i = 0; i < Math.Min(mb, sortedCandidates.Count); i++)
-                    {
-                        result.Add(sortedCandidates[i]);
-                    }
-
-                    var h = new HashSet<int>();
-                    for (int i = mb; i < sortedCandidates.Count; i++)
-                    {
-                        if (result.Count + h.Count >= bestN)
-                        {
-                            break;
-                        }
-
-                        int c = sortedCandidates[i];
-                        if (h.Contains(c))
-                        {
-                            continue;
-                        }
-
-                        result.Add(c);
-
-                        var neighbors = GraphCore.Nodes[c].EnumerateLayer(layer);
-                        foreach (var neighbor in neighbors)
-                        {
-                            h.Add(neighbor);
-                        }
-                    }
-
-                    return result;
+                    AcornCompress(candidates, layer, bestN, output);
+                    return;
                 }
-                else
-                {
-                    // !NO COPY! in-place selection
-                    while (candidatesHeap.Buffer.Count > bestN)
-                    {
-                        candidatesHeap.Pop();
-                    }
 
-                    return candidatesHeap.Buffer;
+                int count = Math.Min(bestN, candidates.Count);
+                for (int i = 0; i < count; ++i)
+                {
+                    output.Add(candidates[i].Id);
                 }
             }
         }

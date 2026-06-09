@@ -93,19 +93,25 @@ namespace HNSW.Net
                 throw new ArgumentException("Vectors have non-matching dimensions");
             }
 
-            float dot = 0;
-            var norm = default(Vector2);
             int step = Vector<float>.Count;
+
+            // accumulate element-wise in vector registers; reduce horizontally only once at the end
+            var dotAcc = Vector<float>.Zero;
+            var normUAcc = Vector<float>.Zero;
+            var normVAcc = Vector<float>.Zero;
 
             int i, to = u.Length - step;
             for (i = 0; i <= to; i += step)
             {
                 var ui = new Vector<float>(u, i);
                 var vi = new Vector<float>(v, i);
-                dot += Vector.Dot(ui, vi);
-                norm.X += Vector.Dot(ui, ui);
-                norm.Y += Vector.Dot(vi, vi);
+                dotAcc += ui * vi;
+                normUAcc += ui * ui;
+                normVAcc += vi * vi;
             }
+
+            float dot = Vector.Sum(dotAcc);
+            var norm = new Vector2(Vector.Sum(normUAcc), Vector.Sum(normVAcc));
 
             for (; i < u.Length; ++i)
             {
@@ -145,45 +151,50 @@ namespace HNSW.Net
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static float DotProduct(ref float[] lhs, ref float[] rhs)
         {
-            float result = 0f;
+            // Accumulate element-wise products in independent vector registers (to hide FMA latency)
+            // and reduce horizontally only once at the end, instead of paying for a horizontal
+            // Vector.Dot reduction on every chunk.
+            var acc0 = Vector<float>.Zero;
+            var acc1 = Vector<float>.Zero;
+            var acc2 = Vector<float>.Zero;
+            var acc3 = Vector<float>.Zero;
 
             var count = lhs.Length;
             var offset = 0;
 
             while (count >= _vs4)
             {
-                result += Vector.Dot(new Vector<float>(lhs, offset), new Vector<float>(rhs, offset));
-                result += Vector.Dot(new Vector<float>(lhs, offset + _vs1), new Vector<float>(rhs, offset + _vs1));
-                result += Vector.Dot(new Vector<float>(lhs, offset + _vs2), new Vector<float>(rhs, offset + _vs2));
-                result += Vector.Dot(new Vector<float>(lhs, offset + _vs3), new Vector<float>(rhs, offset + _vs3));
-                if (count == _vs4) return result;
+                acc0 += new Vector<float>(lhs, offset) * new Vector<float>(rhs, offset);
+                acc1 += new Vector<float>(lhs, offset + _vs1) * new Vector<float>(rhs, offset + _vs1);
+                acc2 += new Vector<float>(lhs, offset + _vs2) * new Vector<float>(rhs, offset + _vs2);
+                acc3 += new Vector<float>(lhs, offset + _vs3) * new Vector<float>(rhs, offset + _vs3);
                 count -= _vs4;
                 offset += _vs4;
             }
 
             if (count >= _vs2)
             {
-                result += Vector.Dot(new Vector<float>(lhs, offset), new Vector<float>(rhs, offset));
-                result += Vector.Dot(new Vector<float>(lhs, offset + _vs1), new Vector<float>(rhs, offset + _vs1));
-                if (count == _vs2) return result;
+                acc0 += new Vector<float>(lhs, offset) * new Vector<float>(rhs, offset);
+                acc1 += new Vector<float>(lhs, offset + _vs1) * new Vector<float>(rhs, offset + _vs1);
                 count -= _vs2;
                 offset += _vs2;
             }
+
             if (count >= _vs1)
             {
-                result += Vector.Dot(new Vector<float>(lhs, offset), new Vector<float>(rhs, offset));
-                if (count == _vs1) return result;
+                acc2 += new Vector<float>(lhs, offset) * new Vector<float>(rhs, offset);
                 count -= _vs1;
                 offset += _vs1;
             }
-            if (count > 0)
+
+            float result = Vector.Sum((acc0 + acc1) + (acc2 + acc3));
+
+            while (count > 0)
             {
-                while (count > 0)
-                {
-                    result += lhs[offset] * rhs[offset];
-                    offset++; count--;
-                }
+                result += lhs[offset] * rhs[offset];
+                offset++; count--;
             }
+
             return result;
         }
     }
