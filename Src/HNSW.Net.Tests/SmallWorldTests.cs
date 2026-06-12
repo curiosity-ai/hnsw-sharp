@@ -218,5 +218,83 @@ namespace HNSW.Net.Tests
 
             Assert.AreEqual(original, copy.Graph.Print());
         }
+
+        /// <summary>
+        /// Regression test: searching while items are being added concurrently (non thread-safe mode, relying on
+        /// the version/retry mechanism) must not throw. A previous optimization had the search alias the live
+        /// connection lists, so a concurrent insertion that reallocated a node's backing array could hand the
+        /// searching thread an out-of-bounds span, surfacing as an ArgumentOutOfRangeException while computing
+        /// the distance to a "neighbour" whose id was garbage read past the end of the array.
+        /// </summary>
+        [TestMethod]
+        public void ConcurrentAddAndSearchDoesNotThrowTest()
+        {
+            // Build a graph, then round-trip it through serialization so its nodes are stored in the flattened
+            // (cached) form. Adding more items afterwards lazily re-hydrates the touched cached nodes into fresh
+            // List<int> connection lists that grow - and therefore reallocate their backing array - as new
+            // neighbours are connected. A concurrent search that aliased such a list could observe a span whose
+            // length (the just-incremented count) exceeded the old, smaller backing array and read a garbage id
+            // past its end, blowing up with ArgumentOutOfRangeException at Items[garbageId] inside RuntimeDistance.
+            // The 224-vector fixture is too small to keep the graph mutating long enough to expose the race,
+            // so generate a larger synthetic set (deterministically, for reproducibility).
+            var rngData = new Random(12345);
+            var data = Enumerable.Range(0, 4000)
+                .Select(_ => Enumerable.Range(0, 16).Select(__ => (float)rngData.NextDouble()).ToArray())
+                .ToArray();
+
+            int seed = 1500;
+
+            var stream = new MemoryStream();
+            var builder = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, new SmallWorldParameters());
+            builder.AddItems(data.Take(seed).ToArray());
+            builder.SerializeGraph(stream);
+            stream.Position = 0;
+
+            var (graph, _) = SmallWorld<float[], float>.DeserializeGraph(data.Take(seed).ToArray(), CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, stream, threadSafe: false);
+
+            var remaining = data.Skip(seed).ToArray();
+
+            Exception failure = null;
+            using var stop = new System.Threading.CancellationTokenSource();
+
+            var readers = Enumerable.Range(0, Math.Max(3, Environment.ProcessorCount)).Select(_ => System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    var rnd = new Random();
+                    while (!stop.IsCancellationRequested)
+                    {
+                        graph.KNNSearch(data[rnd.Next(seed)], 10);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Threading.Volatile.Write(ref failure, ex);
+                    stop.Cancel();
+                }
+            })).ToArray();
+
+            try
+            {
+                // add the remaining items one at a time to maximise the number of connection-list re-hydrations
+                // (and therefore reallocations) happening concurrently with the searches
+                for (int i = 0; i < remaining.Length && !stop.IsCancellationRequested; ++i)
+                {
+                    graph.AddItems(new[] { remaining[i] });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Threading.Volatile.Write(ref failure, ex);
+            }
+            finally
+            {
+                stop.Cancel();
+            }
+
+            System.Threading.Tasks.Task.WaitAll(readers);
+
+            Assert.IsNull(failure, $"Concurrent add/search threw: {failure}");
+        }
     }
 }
