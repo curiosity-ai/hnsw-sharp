@@ -193,7 +193,15 @@ namespace HNSW.Net
 
             private static int RandomLayer(IProvideRandomValues generator, double lambda)
             {
-                var r = -Math.Log(generator.NextFloat()) * lambda;
+                var u = generator.NextFloat();
+
+                // NextFloat() can return exactly 0 (probability ~2^-31), and Log(0) = -inf would
+                // saturate the cast to int.MaxValue, making NewNode try to allocate billions of
+                // layers. Clamp to the smallest value the generator can otherwise produce (2^-31),
+                // which corresponds to the deepest layer reachable by a non-zero draw.
+                if (u <= 0f) u = 4.656613e-10f;
+
+                var r = -Math.Log(u) * lambda;
                 return (int)r;
             }
         }
