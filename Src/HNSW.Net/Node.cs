@@ -26,7 +26,10 @@ namespace HNSW.Net
 
         private List<List<int>> HydrateConnections()
         {
-            _connections = new List<List<int>>();
+            // Build the full structure into a local first and publish it only once it is complete. A concurrent
+            // reader (non thread-safe mode relies on the version/retry mechanism) must never observe _connections
+            // as a non-null but partially-populated list, or indexing it by layer would throw out of range.
+            var hydrated = new List<List<int>>(_maxLayers);
             for (int l = 0; l < _maxLayers; l++)
             {
                 var nl = new List<int>();
@@ -34,9 +37,10 @@ namespace HNSW.Net
                 {
                     nl.Add(v);
                 }
-                _connections.Add(nl);
+                hydrated.Add(nl);
             }
-            return _connections;
+            _connections = hydrated;
+            return hydrated;
         }
 
         [Key(1)] public int Id { get; private set; }
@@ -114,6 +118,33 @@ namespace HNSW.Net
                 // The span aliases the live connection list (no copy); it is only valid until the
                 // connections of this node are modified.
                 return System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_connections[layer]);
+            }
+        }
+
+        /// <summary>
+        /// Copies the neighbour ids of the given layer into <paramref name="destination"/> (cleared on entry).
+        /// Unlike <see cref="EnumerateLayer"/>, this does not alias the live connection list, so the snapshot
+        /// stays valid (and in-bounds) even if a concurrent writer mutates the node while we read it: a racing
+        /// modification surfaces as a catchable exception (absorbed by the version-retry in the searcher)
+        /// rather than handing back an out-of-bounds span over a reallocated backing array.
+        /// </summary>
+        internal void CopyLayerTo(int layer, List<int> destination)
+        {
+            destination.Clear();
+            if (_connections is null)
+            {
+                // Flattened cache is immutable; copy the span element-wise.
+                var span = _cache.GetLayer(_bucketIndex, _position, layer, _maxLayers);
+                for (int i = 0; i < span.Length; ++i)
+                {
+                    destination.Add(span[i]);
+                }
+            }
+            else
+            {
+                // List.AddRange uses ICollection.CopyTo (bounds-checked against the source array), so a
+                // concurrent Add/Clear/AddRange throws instead of yielding a torn, out-of-bounds read.
+                destination.AddRange(_connections[layer]);
             }
         }
 

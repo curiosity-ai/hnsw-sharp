@@ -8,6 +8,7 @@ namespace HNSW.Net
     using System;
     using System.Collections.Generic;
     using System.Runtime.CompilerServices;
+    using System.Runtime.InteropServices;
     using System.Threading;
 
     /// <content>
@@ -24,6 +25,11 @@ namespace HNSW.Net
         {
             private readonly Core Core;
             private readonly List<Candidate<TDistance>> ExpansionBuffer;
+
+            // Reusable snapshot of the neighbour ids of the node currently being expanded. Used to read live
+            // (still mutable) connection lists without aliasing them, so a concurrent writer cannot hand us an
+            // out-of-bounds span. Pooled with the searcher, so taking the snapshot stays allocation-free.
+            private readonly List<int> NeighbourBuffer = new List<int>();
 
             // Epoch based visited set: a node is visited in the current search iff VisitedMarks[id] == VisitedEpoch.
             // Resetting between searches is O(1) (bump the epoch) instead of clearing a bit set proportional
@@ -172,7 +178,22 @@ namespace HNSW.Net
                         }
                         else
                         {
-                            var neighbours = Core.Nodes[toExpand.Id].EnumerateLayer(layer);
+                            var node = Core.Nodes[toExpand.Id];
+
+                            // Flattened nodes expose immutable storage and can be iterated in place; live nodes
+                            // may be mutated by a concurrent AddItems, so snapshot their connections first to
+                            // avoid aliasing a list whose backing array can be reallocated mid-read.
+                            ReadOnlySpan<int> neighbours;
+                            if (node.IsCached)
+                            {
+                                neighbours = node.EnumerateLayer(layer);
+                            }
+                            else
+                            {
+                                node.CopyLayerTo(layer, NeighbourBuffer);
+                                neighbours = CollectionsMarshal.AsSpan(NeighbourBuffer);
+                            }
+
                             for (int i = 0; i < neighbours.Length; ++i)
                             {
                                 int neighbourId = neighbours[i];
