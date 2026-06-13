@@ -46,6 +46,10 @@ namespace HNSW.Net
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int Next(int maxValue)
         {
+            // FastRandom.Next(0) always returns 0 == maxValue, so the rejection loop below would
+            // never terminate. Per the contract above, return maxValue when it is 0.
+            if (maxValue <= 0) return 0;
+
             var inst = _local;
             if (inst == null)
             {
