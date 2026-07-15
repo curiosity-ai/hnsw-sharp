@@ -9,6 +9,7 @@ namespace HNSW.Net
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
+    using System.Numerics;
     using System.Runtime.CompilerServices;
     using System.Runtime.InteropServices;
     using System.Threading;
@@ -29,6 +30,16 @@ namespace HNSW.Net
 
             private long DistanceCalculationsCount;
 
+            // Built-in fast path for unit-normalised float[] vectors: a single contiguous
+            // backing buffer plus an inlined SIMD inner-product, avoiding the per-comparison
+            // delegate call and the jagged-array dereference. See SmallWorldParameters.UseBuiltInUnitInnerProduct.
+            internal readonly bool FastFloatInnerProduct;
+            internal readonly bool NoDistanceCache;
+            internal readonly bool UseBitSetVisited;
+            private int _dim = -1;
+            private float[] _flat = Array.Empty<float>();
+            private int _flatRows;
+
             // Pool of searchers so that concurrent queries reuse the (graph sized) scratch buffers
             // instead of allocating them on every call.
             private readonly System.Collections.Concurrent.ConcurrentBag<Searcher> SearcherPool = new System.Collections.Concurrent.ConcurrentBag<Searcher>();
@@ -41,13 +52,20 @@ namespace HNSW.Net
 
             internal SmallWorldParameters Parameters { get; private set; }
 
-            internal float DistanceCacheHitRate => (float)(DistanceCache?.HitCount ?? 0) / DistanceCalculationsCount;
+            internal float DistanceCacheHitRate => DistanceCalculationsCount == 0
+                ? 0f
+                : (float)(DistanceCache?.HitCount ?? 0) / DistanceCalculationsCount;
 
             internal Core(Func<TItem, TItem, TDistance> distance, SmallWorldParameters parameters)
             {
                 Distance = distance;
                 Parameters = parameters;
                 GetDistanceSkipCacheFunc = GetDistanceSkipCache;
+                FastFloatInnerProduct = parameters.UseBuiltInUnitInnerProduct
+                    && typeof(TItem) == typeof(float[])
+                    && typeof(TDistance) == typeof(float);
+                NoDistanceCache = parameters.RemoveDistanceCache;
+                UseBitSetVisited = parameters.UseBitSetVisited;
 
                 var initialSize = Math.Max(1024, parameters.InitialItemsSize);
 
@@ -68,7 +86,7 @@ namespace HNSW.Net
                     }
                 }
 
-                if (Parameters.EnableDistanceCacheForConstruction)
+                if (Parameters.EnableDistanceCacheForConstruction && !NoDistanceCache)
                 {
                     DistanceCache = new DistanceCache<TDistance>();
 
@@ -86,6 +104,11 @@ namespace HNSW.Net
 
                 var newIDs = new List<int>();
                 Items.AddRange(items);
+
+                if (FastFloatInnerProduct && newCount > 0)
+                {
+                    PackFlat(items);
+                }
 
                 // size the cache for the total number of points in the graph, so the hit rate
                 // does not degrade as the graph grows incrementally
@@ -174,6 +197,20 @@ namespace HNSW.Net
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal TDistance GetDistance(int fromId, int toId)
             {
+                if (FastFloatInnerProduct)
+                {
+                    // No delegate, no jagged-array deref, no distance-cache bookkeeping on the hot path.
+                    float d = InnerProductDistanceByRow(fromId, toId);
+                    return Unsafe.As<float, TDistance>(ref d);
+                }
+
+                if (NoDistanceCache)
+                {
+                    // Distance cache removed completely: no counter, no cache-lookup branch,
+                    // matching the leaner distance path of hnswlib / Lucene HNSW.
+                    return Distance(Items[fromId], Items[toId]);
+                }
+
                 DistanceCalculationsCount++;
                 if (DistanceCache is object)
                 {
@@ -189,6 +226,81 @@ namespace HNSW.Net
             private TDistance GetDistanceSkipCache(int fromId, int toId)
             {
                 return Distance(Items[fromId], Items[toId]);
+            }
+
+            // ---- built-in unit inner-product fast path --------------------------------
+
+            private void PackFlat(IReadOnlyList<TItem> items)
+            {
+                if (_dim < 0)
+                {
+                    _dim = ((float[])(object)items[0]).Length;
+                }
+
+                int total = Items.Count;
+                long needed = (long)total * _dim;
+                if (_flat.Length < needed)
+                {
+                    // grow with headroom to amortise incremental AddItems calls
+                    long cap = Math.Max(needed, _flat.Length == 0 ? needed : _flat.Length * 2L);
+                    Array.Resize(ref _flat, (int)cap);
+                }
+
+                var dst = _flat.AsSpan();
+                for (int i = 0; i < items.Count; i++)
+                {
+                    var v = (float[])(object)items[i];
+                    v.AsSpan(0, _dim).CopyTo(dst.Slice(_flatRows * _dim, _dim));
+                    _flatRows++;
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private float InnerProductDistanceByRow(int a, int b)
+            {
+                var flat = _flat;
+                int dim = _dim;
+                return 1f - Dot(flat.AsSpan(a * dim, dim), flat.AsSpan(b * dim, dim));
+            }
+
+            // Distance from an external unit vector (e.g. a query) to a stored row.
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            internal float InnerProductDistanceToRow(ReadOnlySpan<float> query, int row)
+            {
+                int dim = _dim;
+                return 1f - Dot(query, _flat.AsSpan(row * dim, dim));
+            }
+
+            // Four-accumulator SIMD dot product over contiguous spans (dim assumed equal).
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static float Dot(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
+            {
+                int n = a.Length;
+                int step = Vector<float>.Count;
+                int unroll = step * 4;
+
+                var acc0 = Vector<float>.Zero;
+                var acc1 = Vector<float>.Zero;
+                var acc2 = Vector<float>.Zero;
+                var acc3 = Vector<float>.Zero;
+
+                int i = 0;
+                for (; i <= n - unroll; i += unroll)
+                {
+                    acc0 += new Vector<float>(a.Slice(i, step)) * new Vector<float>(b.Slice(i, step));
+                    acc1 += new Vector<float>(a.Slice(i + step, step)) * new Vector<float>(b.Slice(i + step, step));
+                    acc2 += new Vector<float>(a.Slice(i + step * 2, step)) * new Vector<float>(b.Slice(i + step * 2, step));
+                    acc3 += new Vector<float>(a.Slice(i + step * 3, step)) * new Vector<float>(b.Slice(i + step * 3, step));
+                }
+
+                float sum = Vector.Sum((acc0 + acc1) + (acc2 + acc3));
+
+                for (; i < n; i++)
+                {
+                    sum += a[i] * b[i];
+                }
+
+                return sum;
             }
 
             private static int RandomLayer(IProvideRandomValues generator, double lambda)
