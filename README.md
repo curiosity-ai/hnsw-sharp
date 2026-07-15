@@ -61,6 +61,29 @@ CosineDistance.SIMDForUnits // uses SIMD and requires arguments to be "units"
 ```
 But the API allows to inject any custom distance function tailored specifically for your needs.
 
+##### Performance options
+For `float[]` vectors these opt-in parameters (all off by default, so existing behaviour is unchanged) reduce per-comparison overhead on the hot path:
+```c#
+var parameters = new SmallWorldParameters()
+{
+  // Compute distances with a built-in, inlined SIMD inner product over a single contiguous
+  // backing buffer instead of routing every comparison through the distance delegate + jagged
+  // array. Vectors are assumed unit length, so distance = 1 - dot (cosine distance). This is the
+  // single biggest win: fastest build and query with identical recall.
+  UseBuiltInUnitInnerProduct = true,
+
+  // Remove the optional pairwise distance cache entirely (never allocated; the hot path skips the
+  // cache-lookup branch and the distance-calculation counter). Matches how hnswlib / Lucene work,
+  // which keep no distance cache at all.
+  RemoveDistanceCache = true,
+
+  // Track visited nodes with a packed bit set (1 bit/node) instead of the default epoch-tagged
+  // int[] (4 bytes/node). Denser in cache, but the int[] resets in O(1) by bumping the epoch while
+  // the bit set must be cleared each search - only worth it for very large graphs.
+  UseBitSetVisited = false,
+};
+```
+
 ## Contributing
 Your contributions and suggestions are very welcome! 
 Please note that this project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.

@@ -37,6 +37,11 @@ namespace HNSW.Net
             private int[] VisitedMarks;
             private int VisitedEpoch;
 
+            // Alternative visited set: a packed bit set (1 bit/node). 32x denser than VisitedMarks, so it
+            // stays hot in cache for large graphs, at the cost of an O(nodes/64) clear per search.
+            private readonly bool UseBitSet;
+            private ulong[] VisitedBits;
+
             /// <summary>
             /// Initializes a new instance of the <see cref="Searcher"/> class.
             /// </summary>
@@ -45,7 +50,17 @@ namespace HNSW.Net
             {
                 Core = core;
                 ExpansionBuffer = new List<Candidate<TDistance>>();
-                VisitedMarks = new int[Math.Max(1024, core.Nodes.Count)];
+                UseBitSet = core.UseBitSetVisited;
+                if (UseBitSet)
+                {
+                    VisitedMarks = Array.Empty<int>();
+                    VisitedBits = new ulong[(Math.Max(1024, core.Nodes.Count) + 63) >> 6];
+                }
+                else
+                {
+                    VisitedMarks = new int[Math.Max(1024, core.Nodes.Count)];
+                    VisitedBits = Array.Empty<ulong>();
+                }
                 VisitedEpoch = 0;
             }
 
@@ -54,6 +69,21 @@ namespace HNSW.Net
                 ExpansionBuffer.Clear();
 
                 int nodesCount = Core.Nodes.Count;
+
+                if (UseBitSet)
+                {
+                    int words = (nodesCount + 63) >> 6;
+                    if (VisitedBits.Length < words)
+                    {
+                        VisitedBits = new ulong[Math.Max(words, VisitedBits.Length * 2)];
+                    }
+                    else
+                    {
+                        Array.Clear(VisitedBits, 0, words);
+                    }
+                    return;
+                }
+
                 if (VisitedMarks.Length < nodesCount)
                 {
                     VisitedMarks = new int[Math.Max(nodesCount, VisitedMarks.Length * 2)];
@@ -67,6 +97,40 @@ namespace HNSW.Net
                 }
 
                 ++VisitedEpoch;
+            }
+
+            // Marks a node visited unconditionally (used for the entry point).
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private void MarkVisited(int id)
+            {
+                if (UseBitSet)
+                {
+                    VisitedBits[id >> 6] |= 1UL << (id & 63);
+                }
+                else
+                {
+                    VisitedMarks[id] = VisitedEpoch;
+                }
+            }
+
+            // Returns true if the node had not been visited yet this search, marking it visited.
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private bool TryVisit(int id)
+            {
+                if (UseBitSet)
+                {
+                    int w = id >> 6;
+                    ulong bit = 1UL << (id & 63);
+                    if ((VisitedBits[w] & bit) != 0) return false;
+                    VisitedBits[w] |= bit;
+                    return true;
+                }
+                else
+                {
+                    if (VisitedMarks[id] == VisitedEpoch) return false;
+                    VisitedMarks[id] = VisitedEpoch;
+                    return true;
+                }
             }
 
             /// <summary>
@@ -121,7 +185,7 @@ namespace HNSW.Net
                 }
 
                 expansionHeap.Push(entryPoint);
-                VisitedMarks[entryPointId] = VisitedEpoch;
+                MarkVisited(entryPointId);
 
                 // Early termination ("patience") state: once the result set stops improving for a sustained
                 // number of consecutive hops we stop exploring. Only meaningful while collecting more than a single
@@ -168,9 +232,8 @@ namespace HNSW.Net
                                     return visitedNodesCount;
                                 }
 
-                                if (VisitedMarks[neighbourId] != VisitedEpoch)
+                                if (TryVisit(neighbourId))
                                 {
-                                    VisitedMarks[neighbourId] = VisitedEpoch;
                                     ++visitedNodesCount;
                                     resultChangesThisHop += ProcessNeighbour(neighbourId, targetCosts, ref resultHeap, ref expansionHeap, k, keepResult);
                                 }
@@ -197,9 +260,8 @@ namespace HNSW.Net
                             for (int i = 0; i < neighbours.Length; ++i)
                             {
                                 int neighbourId = neighbours[i];
-                                if (VisitedMarks[neighbourId] != VisitedEpoch)
+                                if (TryVisit(neighbourId))
                                 {
-                                    VisitedMarks[neighbourId] = VisitedEpoch;
                                     ++visitedNodesCount;
                                     resultChangesThisHop += ProcessNeighbour(neighbourId, targetCosts, ref resultHeap, ref expansionHeap, k, keepResult);
                                 }

@@ -112,6 +112,78 @@ namespace HNSW.Net.Tests
         }
 
         /// <summary>
+        /// Verifies the built-in unit inner-product distance path (<see cref="SmallWorldParameters.UseBuiltInUnitInnerProduct"/>)
+        /// returns the same nearest neighbours as the delegate-based cosine path. Inputs are unit-normalised so that
+        /// inner product equals cosine similarity (self-distance 1 - dot = 0).
+        /// </summary>
+        [TestMethod]
+        public void KNNSearchBuiltInUnitInnerProductTest()
+        {
+            var normalized = vectors.Select(v => { var c = (float[])v.Clone(); VectorUtils.Normalize(c); return c; }).ToList();
+            var parameters = new SmallWorldParameters()
+            {
+                NeighbourHeuristic = NeighbourSelectionHeuristic.SelectHeuristic,
+                UseBuiltInUnitInnerProduct = true,
+            };
+            var graph = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, parameters);
+            graph.AddItems(normalized);
+
+            int bestWrong = 0;
+            float maxError = float.MinValue;
+            for (int i = 0; i < normalized.Count; ++i)
+            {
+                var result = graph.KNNSearch(normalized[i], 20);
+                Assert.AreEqual(20, result.Count);
+                var best = result.OrderBy(r => r.Distance).First();
+                if (best.Id != i)
+                {
+                    bestWrong++;
+                }
+                maxError = Math.Max(maxError, best.Distance);
+            }
+            Assert.AreEqual(0, 100f * bestWrong / normalized.Count); //Percentage of failed cases
+            // The SIMD dot accumulates in float, so the self-distance (1 - dot) carries slightly more
+            // rounding noise than the normalised cosine path; still effectively zero.
+            Assert.AreEqual(0, maxError, 1e-5f);
+        }
+
+        /// <summary>
+        /// Verifies that removing the distance cache (<see cref="SmallWorldParameters.RemoveDistanceCache"/>) and/or
+        /// switching the visited set to a packed bit set (<see cref="SmallWorldParameters.UseBitSetVisited"/>) does not
+        /// change search correctness: neither option affects distance semantics.
+        /// </summary>
+        [DataTestMethod]
+        [DataRow(true, false)]
+        [DataRow(false, true)]
+        [DataRow(true, true)]
+        public void KNNSearchRemoveCacheAndBitSetTest(bool removeCache, bool useBitSet)
+        {
+            var parameters = new SmallWorldParameters()
+            {
+                RemoveDistanceCache = removeCache,
+                UseBitSetVisited = useBitSet,
+            };
+            var graph = new SmallWorld<float[], float>(CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, parameters);
+            graph.AddItems(vectors);
+
+            int bestWrong = 0;
+            float maxError = float.MinValue;
+            for (int i = 0; i < vectors.Count; ++i)
+            {
+                var result = graph.KNNSearch(vectors[i], 20);
+                Assert.AreEqual(20, result.Count);
+                var best = result.OrderBy(r => r.Distance).First();
+                if (best.Id != i)
+                {
+                    bestWrong++;
+                }
+                maxError = Math.Max(maxError, best.Distance);
+            }
+            Assert.AreEqual(0, bestWrong);
+            Assert.AreEqual(0, maxError, FloatError);
+        }
+
+        /// <summary>
         /// Verifies that enabling early termination preserves a high recall against the exhaustive search baseline.
         /// </summary>
         [DataTestMethod]

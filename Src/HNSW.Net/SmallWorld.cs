@@ -277,7 +277,40 @@ namespace HNSW.Net
             EnableEarlyTermination = false;
             EarlyTerminationSaturationThreshold = 0.95;
             EarlyTerminationPatience = 0;
+            UseBuiltInUnitInnerProduct = false;
+            RemoveDistanceCache = false;
+            UseBitSetVisited = false;
         }
+
+        /// <summary>
+        /// Selects the data structure used to track already-visited nodes during a layer search.
+        /// The default (false) is an epoch-tagged <c>int[]</c> (4 bytes/node, O(1) reset by bumping the
+        /// epoch), the same technique hnswlib uses. When true, a packed bit set (1 bit/node) is used
+        /// instead: 32x denser, so it stays hot in cache for large graphs, at the cost of an O(nodes/64)
+        /// clear per search. Lucene's HNSW uses a bit set of this kind.
+        /// </summary>
+        public bool UseBitSetVisited { get; set; }
+
+        /// <summary>
+        /// When set, the optional pairwise distance cache is removed from the graph entirely: it is
+        /// never allocated and the per-comparison hot path skips both the cache lookup branch and the
+        /// distance-calculation counter. Neither hnswlib nor Lucene's HNSW memoise pairwise distances
+        /// (they rely only on a visited-set + on-the-fly recomputation), so this makes HNSW.Net match
+        /// their leaner distance path. Has no effect when <see cref="EnableDistanceCacheForConstruction"/>
+        /// is also requested — removal wins.
+        /// </summary>
+        public bool RemoveDistanceCache { get; set; }
+
+        /// <summary>
+        /// When set (and the graph is built over <c>float[]</c> items with a <c>float</c> distance),
+        /// distances are computed by a built-in, aggressively-inlined SIMD inner-product kernel that
+        /// operates on a single contiguous backing buffer, instead of routing every comparison through
+        /// the user-supplied <c>Func&lt;TItem,TItem,TDistance&gt;</c> delegate over a jagged array.
+        /// Vectors are assumed to be unit length, so the returned distance is <c>1 - dot(a,b)</c>
+        /// (cosine distance for normalised inputs). This removes the per-comparison delegate indirection,
+        /// the jagged-array dereference and the bounds checks from the hottest path of build and search.
+        /// </summary>
+        public bool UseBuiltInUnitInnerProduct { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the layer-0 search should stop early once the result set has

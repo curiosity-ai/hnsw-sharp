@@ -14,6 +14,7 @@ namespace HNSW.Net
 
     using static HNSW.Net.EventSources;
     using System.Threading;
+    using System.Runtime.CompilerServices;
     using System.Runtime.InteropServices;
 
     /// <summary>
@@ -181,9 +182,15 @@ namespace HNSW.Net
             int retries = 1_024;
 
             // TODO: hack we know that destination id is -1.
+            float[] destinationFloat = GraphCore.FastFloatInnerProduct ? (float[])(object)destination : null;
             TDistance RuntimeDistance(int x, int y)
             {
                 int nodeId = x >= 0 ? x : y;
+                if (GraphCore.FastFloatInnerProduct)
+                {
+                    float d = GraphCore.InnerProductDistanceToRow(destinationFloat, nodeId);
+                    return Unsafe.As<float, TDistance>(ref d);
+                }
                 return Distance(destination, GraphCore.Items[nodeId]);
             }
 
