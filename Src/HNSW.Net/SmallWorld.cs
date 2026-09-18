@@ -6,6 +6,7 @@
 namespace HNSW.Net
 {
     using System;
+    using System.Buffers;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
@@ -22,7 +23,15 @@ namespace HNSW.Net
     /// <typeparam name="TDistance">The type of distance between items (expect any numeric type: float, double, decimal, int, ...).</typeparam>
     public partial class SmallWorld<TItem, TDistance> where TDistance : struct, IComparable<TDistance>
     {
+        /// <summary>The header of the legacy MessagePack format, which is still read.</summary>
         private const string SERIALIZATION_HEADER = "HNSW";
+
+        /// <summary>The header of the flat format - see <c>Graph.Serialization.cs</c> - which is what is written.</summary>
+        private const string SERIALIZATION_HEADER_V2 = "HNSW2";
+
+        /// <summary>Sanity bound on the serialized <see cref="SmallWorldParameters"/> block (it is a couple of hundred bytes).</summary>
+        private const int MAXIMUM_PARAMETERS_SIZE = 1024 * 1024;
+
         private readonly Func<TItem, TItem, TDistance> Distance;
 
         private Graph<TItem, TDistance> Graph;
@@ -143,8 +152,76 @@ namespace HNSW.Net
         /// <summary>
         /// Serializes the graph WITHOUT linked items.
         /// </summary>
-        /// <returns>Bytes representing the graph.</returns>
+        /// <remarks>
+        /// The bytes travel through a buffer rented from <see cref="ArrayPool{T}.Shared"/> and are flushed to
+        /// <paramref name="stream"/> as they are produced, so peak memory does not scale with the graph.
+        /// </remarks>
         public void SerializeGraph(Stream stream)
+        {
+            if (Graph == null)
+            {
+                throw new InvalidOperationException("The graph does not exist");
+            }
+            _rwLock?.EnterReadLock();
+            try
+            {
+                using (var writer = new PooledStreamBufferWriter(stream))
+                {
+                    WriteGraph(writer);
+                }
+            }
+            finally
+            {
+                _rwLock?.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// Serializes the graph WITHOUT linked items, straight into a caller-owned
+        /// <see cref="IBufferWriter{T}"/>.
+        /// </summary>
+        /// <remarks>
+        /// For a caller that already has a pooled writer and a destination taking a contiguous span (a
+        /// key-value store's put, an encryption call), this skips staging the graph in a stream first.
+        /// </remarks>
+        public void SerializeGraph(IBufferWriter<byte> writer)
+        {
+            if (Graph == null)
+            {
+                throw new InvalidOperationException("The graph does not exist");
+            }
+            _rwLock?.EnterReadLock();
+            try
+            {
+                WriteGraph(writer);
+            }
+            finally
+            {
+                _rwLock?.ExitReadLock();
+            }
+        }
+
+        private void WriteGraph(IBufferWriter<byte> writer)
+        {
+            var messagePackWriter = new MessagePackWriter(writer);
+            messagePackWriter.Write(SERIALIZATION_HEADER_V2);
+            messagePackWriter.Flush();
+
+            //Length-prefixed so the reader never has to rewind the stream - see PooledStreamBufferReader.ReadMessagePackBlock
+            var parameters = new ArrayBufferWriter<byte>(256);
+            MessagePackSerializer.Serialize(parameters, Graph.Parameters);
+
+            writer.WriteInt32(parameters.WrittenCount);
+            writer.Write(parameters.WrittenSpan);
+
+            Graph.SerializeFlat(writer);
+        }
+
+        /// <summary>
+        /// Serializes the graph in the legacy MessagePack format. Only used to produce data for the
+        /// backwards-compatibility tests - <see cref="SerializeGraph(Stream)"/> is the one to call.
+        /// </summary>
+        internal void SerializeGraphLegacy(Stream stream)
         {
             if (Graph == null)
             {
@@ -155,7 +232,7 @@ namespace HNSW.Net
             {
                 MessagePackBinary.WriteString(stream, SERIALIZATION_HEADER);
                 MessagePackSerializer.Serialize(stream, Graph.Parameters);
-                Graph.Serialize(stream);
+                Graph.SerializeMessagePack(stream);
             }
             finally
             {
@@ -170,7 +247,7 @@ namespace HNSW.Net
         /// <param name="bytes">The serialized parameters and edges.</param>
         public static (SmallWorld<TItem, TDistance> Graph, TItem[] ItemsNotInGraph) DeserializeGraph(IReadOnlyList<TItem> items, Func<TItem, TItem, TDistance> distance, IProvideRandomValues generator, Stream stream, bool threadSafe = true)
         {
-            var p0 = stream.Position;
+            var p0 = stream.CanSeek ? stream.Position : 0; //Only used to rewind a stream that turns out not to be a graph
             string hnswHeader;
             try
             {
@@ -182,7 +259,7 @@ namespace HNSW.Net
                 throw new InvalidDataException($"Invalid header found in stream, data is corrupted or invalid", E);
             }
 
-            if (hnswHeader != SERIALIZATION_HEADER)
+            if (hnswHeader != SERIALIZATION_HEADER && hnswHeader != SERIALIZATION_HEADER_V2)
             {
                 if (stream.CanSeek) { stream.Position = p0; } //Resets the stream to original position
                 throw new InvalidDataException($"Invalid header found in stream, data is corrupted or invalid");
@@ -191,14 +268,28 @@ namespace HNSW.Net
             // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
             //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
 
+            if (hnswHeader == SERIALIZATION_HEADER_V2)
+            {
+                //One reader for the whole payload: the parameters are length-prefixed, so nothing reads past
+                //what it needs and the stream does not have to be seekable.
+                using (var reader = new PooledStreamBufferReader(stream))
+                {
+                    var flatParameters = reader.ReadMessagePackBlock<SmallWorldParameters>(MAXIMUM_PARAMETERS_SIZE);
+                    flatParameters.InitialDistanceCacheSize = 0;
+
+                    var flatWorld = new SmallWorld<TItem, TDistance>(distance, generator, flatParameters, threadSafe: threadSafe);
+                    return (flatWorld, flatWorld.Graph.DeserializeFlat(items, reader));
+                }
+            }
+
             var parameters = MessagePackSerializer.Deserialize<SmallWorldParameters>(stream);
 
             //Overwrite previous InitialDistanceCacheSize parameter, so we don't waste time/memory allocating a distance cache for an already existing graph
             parameters.InitialDistanceCacheSize = 0;
 
             var world = new SmallWorld<TItem, TDistance>(distance, generator, parameters, threadSafe: threadSafe);
-            var remainingItems = world.Graph.Deserialize(items, stream);
-            return (world, remainingItems);
+
+            return (world, world.Graph.DeserializeMessagePack(items, stream));
         }
 
         /// <summary>

@@ -7,7 +7,9 @@ namespace HNSW.Net
 {
     using MessagePack;
     using System;
+    using System.Buffers;
     using System.Collections.Generic;
+    using System.Runtime.InteropServices;
 
     /// <summary>
     /// The implementation of the node in hnsw graph.
@@ -166,6 +168,98 @@ namespace HNSW.Net
             }
 
             return _connections[layer];
+        }
+
+        /// <summary>
+        /// Number of ints this node occupies in the flat format: the per-layer start offsets, the total, and
+        /// the neighbour ids themselves.
+        /// </summary>
+        internal int FlatRecordLength
+        {
+            get
+            {
+                if (_maxLayers == 0) return 0;
+
+                if (_connections is null)
+                {
+                    return _cache.GetAll(_bucketIndex, _position, _maxLayers).Length;
+                }
+
+                int total = 0;
+                for (int layer = 0; layer < _maxLayers; layer++)
+                {
+                    total += _connections[layer].Count;
+                }
+
+                return total + _maxLayers + 1;
+            }
+        }
+
+        /// <summary>
+        /// Writes this node in the flat format, without materializing its connections as lists.
+        /// </summary>
+        /// <remarks>
+        /// A node that has already been flattened (the common case after <c>OptimizeIfNeeded</c>) is copied
+        /// straight out of <see cref="CachedNodeData"/> as one span, which is the whole point of the format:
+        /// reading <see cref="Connections"/> instead would hydrate a <c>List&lt;List&lt;int&gt;&gt;</c> per
+        /// node and leave the graph un-flattened behind it.
+        /// </remarks>
+        internal void WriteTo(IBufferWriter<byte> writer)
+        {
+            writer.WriteInt32(Id);
+            writer.WriteInt32(_maxLayers);
+
+            if (_maxLayers == 0)
+            {
+                writer.WriteInt32(0);
+                return;
+            }
+
+            if (_connections is null)
+            {
+                var flat = _cache.GetAll(_bucketIndex, _position, _maxLayers);
+                writer.WriteInt32(flat.Length);
+                writer.WriteInt32Span(flat);
+                return;
+            }
+
+            int total = 0;
+            for (int layer = 0; layer < _maxLayers; layer++)
+            {
+                total += _connections[layer].Count;
+            }
+
+            writer.WriteInt32(total + _maxLayers + 1);
+
+            int offset = 0;
+            for (int layer = 0; layer < _maxLayers; layer++)
+            {
+                writer.WriteInt32(offset);
+                offset += _connections[layer].Count;
+            }
+
+            writer.WriteInt32(offset);
+
+            for (int layer = 0; layer < _maxLayers; layer++)
+            {
+                writer.WriteInt32Span(CollectionsMarshal.AsSpan(_connections[layer]));
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds a node whose flat record has already been read into <paramref name="cache"/>.
+        /// </summary>
+        internal static Node FromCache(int id, CachedNodeData cache, int bucketIndex, int position, int maxLayers)
+        {
+            return new Node
+            {
+                Id           = id,
+                _connections = null,
+                _cache       = cache,
+                _bucketIndex = bucketIndex,
+                _position    = position,
+                _maxLayers   = maxLayers,
+            };
         }
     }
 }

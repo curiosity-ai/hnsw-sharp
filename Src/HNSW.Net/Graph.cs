@@ -280,31 +280,34 @@ namespace HNSW.Net
         }
 
         /// <summary>
-        /// Serializes core of the graph.
+        /// Serializes the core of the graph in the legacy MessagePack format.
         /// </summary>
-        /// <returns>Bytes representing edges.</returns>
-        internal void Serialize(Stream stream)
+        /// <remarks>
+        /// Reading <c>Nodes</c> through MessagePack hydrates every node's connections back into lists, which
+        /// is why this has to re-flatten the graph afterwards. Only kept so the format stays writable (the
+        /// round-trip tests pin both directions); <see cref="SerializeFlat"/> is what is written now.
+        /// </remarks>
+        internal void SerializeMessagePack(Stream stream)
         {
-            GraphCore.Serialize(stream);
+            GraphCore.SerializeMessagePack(stream);
             MessagePackSerializer.Serialize(stream, EntryPoint);
             OptimizeIfNeeded(force: _cachedNodeData is object);
         }
 
         /// <summary>
-        /// Deserializes graph edges and assigns nodes to the items.
+        /// Deserializes graph edges written in the legacy MessagePack format and assigns nodes to the items.
         /// </summary>
         /// <param name="items">The underlying items.</param>
-        /// <param name="bytes">The serialized edges.</param>
-        internal TItem[] Deserialize(IReadOnlyList<TItem> items, Stream stream)
+        /// <param name="stream">The serialized edges.</param>
+        internal TItem[] DeserializeMessagePack(IReadOnlyList<TItem> items, Stream stream)
         {
             // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
             //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
             _cachedNodeData = new CachedNodeData();
             var core = new Core(Distance, Parameters);
-            var remainingItems = core.Deserialize(items, stream, _cachedNodeData);
+            var remainingItems = core.DeserializeMessagePack(items, stream, _cachedNodeData);
             var entryPoint = MessagePackSerializer.Deserialize<Node>(stream);
-            Node.FlattenToCache(ref entryPoint, _cachedNodeData);
-            EntryPoint = entryPoint;
+            EntryPoint = entryPoint.Id >= 0 && entryPoint.Id < core.Nodes.Count ? core.Nodes[entryPoint.Id] : (Node?)null;
             GraphCore = core;
             return remainingItems;
         }
@@ -316,6 +319,13 @@ namespace HNSW.Net
                 var newCache = new CachedNodeData();
                 GraphCore.Optimize(newCache);
                 _cachedNodeData = newCache;
+
+                // The entry point is a copy of one of the nodes, so an un-refreshed one keeps the whole
+                // previous cache (hundreds of MB on a large graph) alive for its own handful of neighbours.
+                if (EntryPoint is object)
+                {
+                    EntryPoint = GraphCore.Nodes[EntryPoint.Value.Id];
+                }
             }
         }
 
