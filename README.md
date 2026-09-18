@@ -43,14 +43,35 @@ var parameters = new SmallWorld<float[], float>.Parameters()
 };
 ```
 ##### How to (de)serialize the graph?
+The graph is written without its items - the caller keeps those and hands them back on load, in the same
+order. Items the persisted graph does not cover come back as `ItemsNotInGraph`, so a crash between "items
+persisted" and "graph persisted" is recovered by re-adding them.
+
 ```c#
 SmallWorld<float[], float> graph = GetGraph();
-byte[] buffer = graph.SerializeGraph(); // buffer stores information about parameters and graph edges
+graph.OptimizeIfNeeded();          // flattens the connections; optional, but makes the write a span copy
+graph.SerializeGraph(stream);      // parameters + edges, nothing else
 
 // distance function must be the same as the one which was used for building the original graph
-var copy = new SmallWorld<float[], float>(CosineDistance.NonOptimized);
-copy.DeserializeGraph(vectors, buffer); // the original vectors to attach to the "copy" vertices
+var (copy, itemsNotInGraph) = SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, stream);
+copy.AddItems(itemsNotInGraph);
 ```
+
+There is also an `IBufferWriter<byte>` overload, for a caller that already has a pooled writer and a
+destination that takes a contiguous span (a key-value store's put, an encryption call):
+
+```c#
+var writer = new ArrayBufferWriter<byte>();
+graph.SerializeGraph(writer);
+db.Put(key, writer.WrittenSpan);
+```
+
+**Format.** Graphs are written in the flat `HNSW2` format: a msgpack header and parameters, then each node's
+connections as one run of little-endian `int`s - the per-layer start offsets, the total, then the neighbour
+ids. That is byte for byte how the connections are already held in memory once the graph is flattened, so a
+save is a span copy per node and a load is a span fill per node, through a buffer rented from
+`ArrayPool<byte>.Shared`. Nothing is staged in memory at graph size and no per-node list is allocated in
+either direction. The older `HNSW` (MessagePack) format is still read, so existing files keep loading.
 ##### Distance functions
 The only one distance function supplied by the library is the cosine distance. But there are 4 versions to address universality/performance tradeoff.
 ```c#

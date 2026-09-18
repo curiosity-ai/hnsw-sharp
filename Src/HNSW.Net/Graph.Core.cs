@@ -18,7 +18,7 @@ namespace HNSW.Net
 
     internal partial class Graph<TItem, TDistance>
     {
-        internal class Core
+        internal partial class Core
         {
             private readonly Func<TItem, TItem, TDistance> Distance;
 
@@ -123,7 +123,12 @@ namespace HNSW.Net
                 }
             }
 
-            internal void Serialize(Stream stream)
+            /// <summary>
+            /// Writes the nodes in the legacy MessagePack format. Kept so a graph written by this version can
+            /// still be read by one that predates the flat format; <see cref="Graph{TItem,TDistance}.SerializeFlat"/>
+            /// is what <see cref="SmallWorld{TItem,TDistance}.SerializeGraph(Stream)"/> writes.
+            /// </summary>
+            internal void SerializeMessagePack(Stream stream)
             {
                 MessagePackSerializer.Serialize(stream, Nodes);
             }
@@ -153,7 +158,7 @@ namespace HNSW.Net
                 }
             }
 
-            internal TItem[] Deserialize(IReadOnlyList<TItem> items, Stream stream, CachedNodeData cachedNodeData)
+            internal TItem[] DeserializeMessagePack(IReadOnlyList<TItem> items, Stream stream, CachedNodeData cachedNodeData)
             {
                 // readStrict: true -> removed, as not available anymore on MessagePack 2.0 - also probably not necessary anymore
                 //                     see https://github.com/neuecc/MessagePack-CSharp/pull/663
@@ -166,9 +171,7 @@ namespace HNSW.Net
                     Node.FlattenToCache(ref nodesSpan[i], cachedNodeData);
                 }
 
-                var remainingItems = items.Skip(Nodes.Count).ToArray();
-                Items.AddRange(items.Take(Nodes.Count));
-                return remainingItems;
+                return AssignItems(items, Nodes.Count);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
