@@ -313,6 +313,64 @@ namespace HNSW.Net.Tests
         }
 
         /// <summary>
+        /// Offset of the first node record in a flat payload: the msgpack header string, the
+        /// length-prefixed parameters block, then the three-field graph header.
+        /// </summary>
+        private static int FirstNodeRecordOffset(byte[] bytes)
+        {
+            const int HEADER_STRING_LENGTH = 1 + 5; //fixstr marker + "HNSW2"
+
+            int parametersLength = BitConverter.ToInt32(bytes, HEADER_STRING_LENGTH);
+
+            return HEADER_STRING_LENGTH + sizeof(int) + parametersLength + sizeof(int) + sizeof(int) + sizeof(long);
+        }
+
+        /// <summary>
+        /// A record that claims layers but carries no offsets would load as a node with no layers at all,
+        /// which a later forced optimize could not flatten. It is rejected up front instead.
+        /// </summary>
+        [TestMethod]
+        public void RecordWithLayersButNoDataIsRejected()
+        {
+            var graph = BuildGraph();
+
+            var stream = new MemoryStream();
+            graph.SerializeGraph(stream);
+
+            var bytes  = stream.ToArray();
+            int node0  = FirstNodeRecordOffset(bytes);
+
+            Assert.AreEqual(0, BitConverter.ToInt32(bytes, node0), "the first record should be node 0");
+            Assert.IsGreaterThan(0, BitConverter.ToInt32(bytes, node0 + sizeof(int)), "node 0 should have at least one layer");
+
+            BitConverter.TryWriteBytes(bytes.AsSpan(node0 + 2 * sizeof(int)), 0); //recordLength
+
+            Assert.ThrowsExactly<InvalidDataException>(() =>
+                SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, new MemoryStream(bytes)));
+        }
+
+        /// <summary>
+        /// Nodes are read back by position, so a record carrying a different id than its position would
+        /// silently mis-wire the graph.
+        /// </summary>
+        [TestMethod]
+        public void RecordOutOfIdOrderIsRejected()
+        {
+            var graph = BuildGraph();
+
+            var stream = new MemoryStream();
+            graph.SerializeGraph(stream);
+
+            var bytes  = stream.ToArray();
+            int node0  = FirstNodeRecordOffset(bytes);
+
+            BitConverter.TryWriteBytes(bytes.AsSpan(node0), 1); //id of the first record
+
+            Assert.ThrowsExactly<InvalidDataException>(() =>
+                SmallWorld<float[], float>.DeserializeGraph(vectors, CosineDistance.NonOptimized, DefaultRandomGenerator.Instance, new MemoryStream(bytes)));
+        }
+
+        /// <summary>
         /// A graph that was loaded and then grown must serialize both its flattened nodes and the newly
         /// added, still-hydrated ones.
         /// </summary>
