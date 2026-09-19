@@ -110,9 +110,16 @@ namespace HNSW.Net
                     int maxLayers    = reader.ReadInt32();
                     int recordLength = reader.ReadInt32();
 
+                    //Nodes are written in id order and read back by position, so the two have to agree
+                    if (id != i)
+                    {
+                        throw new InvalidDataException($"Invalid HNSW node record at index {i}: it carries id {id}");
+                    }
+
                     //Bounded against the total announced in the header, so corrupted data cannot make the
-                    //reader ask for an arbitrarily large allocation before it notices
-                    if (maxLayers < 0 || recordLength < 0 || recordLength > remaining || (recordLength > 0 && recordLength < maxLayers + 1))
+                    //reader ask for an arbitrarily large allocation before it notices. A node without
+                    //layers has no record, and a node with layers has at least the offsets and the total.
+                    if (maxLayers < 0 || recordLength < 0 || recordLength > remaining || (recordLength == 0) != (maxLayers == 0) || (recordLength > 0 && recordLength < maxLayers + 1))
                     {
                         throw new InvalidDataException($"Invalid HNSW node record at index {i} (layers: {maxLayers}, size: {recordLength})");
                     }

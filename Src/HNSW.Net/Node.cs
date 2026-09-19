@@ -71,6 +71,12 @@ namespace HNSW.Net
                 node._position    = data.position;
                 node._maxLayers   = data.maxLayers;
             }
+            else if (node._maxLayers == 0)
+            {
+                //Nothing to copy: a node without layers owns no record in any cache
+                node._bucketIndex = -1;
+                node._position    = -1;
+            }
             else
             {
                 var data = cache.Add(node._cache.GetAll(node._bucketIndex, node._position, node._maxLayers), node._maxLayers);
