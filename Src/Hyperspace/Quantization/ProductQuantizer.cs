@@ -102,7 +102,7 @@ namespace Hyperspace
 
         private Span<float> Centroid(int sub, int k) => _centroids.AsSpan((((sub * 256) + k) * SubvectorDimension), SubvectorDimension);
 
-        /// <summary>Trains the codebooks with Lloyd's k-means on each sub-space.</summary>
+        /// <summary>Trains the codebooks with Lloyd's k-means on each sub-space, seeded with k-means++.</summary>
         public void Train(IReadOnlyList<float[]> samples, int iterations = 10)
         {
             if (samples.Count == 0)
@@ -131,16 +131,7 @@ namespace Hyperspace
             Parallel.For(0, NumSubvectors, sub =>
             {
                 int subOffset = sub * subDim;
-                for (int k = 0; k < 256; k++)
-                {
-                    var sample = data[n > 256 ? (k * n) / 256 : k % n];
-                    var c = Centroid(sub, k);
-                    for (int d = 0; d < subDim; d++)
-                    {
-                        int idx = subOffset + d;
-                        c[d] = idx < sample.Length ? sample[idx] : 0f;
-                    }
-                }
+                SeedPlusPlus(data, sub, subOffset, subDim, seed: 0x5EED + sub);
 
                 var assignments = new byte[n];
                 var counts = new int[256];
@@ -201,6 +192,83 @@ namespace Hyperspace
                     }
                 }
             });
+        }
+
+        /// <summary>
+        /// k-means++ seeding of the 256 centroids of one sub-space: each new centroid is a sample drawn with probability proportional to its squared
+        /// distance to the nearest centroid chosen so far. It reaches a clearly lower quantization error than seeding from evenly spaced samples,
+        /// at the cost of one extra Lloyd-iteration's worth of distance computations. Deterministic for a given sample set.
+        /// </summary>
+        private void SeedPlusPlus(float[][] data, int sub, int subOffset, int subDim, int seed)
+        {
+            int n = data.Length;
+            var rng = new Random(seed);
+            var nearest = new double[n];
+
+            void Set(int k, float[] sample)
+            {
+                var c = Centroid(sub, k);
+                for (int d = 0; d < subDim; d++)
+                {
+                    int idx = subOffset + d;
+                    c[d] = idx < sample.Length ? sample[idx] : 0f;
+                }
+            }
+
+            double DistTo(float[] sample, int k)
+            {
+                var c = Centroid(sub, k);
+                double dist = 0;
+                for (int d = 0; d < subDim; d++)
+                {
+                    int idx = subOffset + d;
+                    double diff = (idx < sample.Length ? sample[idx] : 0f) - c[d];
+                    dist += diff * diff;
+                }
+
+                return dist;
+            }
+
+            Set(0, data[rng.Next(n)]);
+            for (int i = 0; i < n; i++)
+            {
+                nearest[i] = DistTo(data[i], 0);
+            }
+
+            for (int k = 1; k < 256; k++)
+            {
+                double total = 0;
+                foreach (double dist in nearest)
+                {
+                    total += dist;
+                }
+
+                // With fewer distinct samples than centroids every distance reaches zero: fall back to a uniform pick.
+                int pick = rng.Next(n);
+                if (total > 0)
+                {
+                    double target = rng.NextDouble() * total, acc = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        acc += nearest[i];
+                        if (acc >= target && nearest[i] > 0)
+                        {
+                            pick = i;
+                            break;
+                        }
+                    }
+                }
+
+                Set(k, data[pick]);
+                for (int i = 0; i < n; i++)
+                {
+                    double dist = DistTo(data[i], k);
+                    if (dist < nearest[i])
+                    {
+                        nearest[i] = dist;
+                    }
+                }
+            }
         }
 
         /// <summary>Encodes a vector to <see cref="NumSubvectors"/> bytes.</summary>

@@ -1,6 +1,7 @@
 namespace Hyperspace.Tests
 {
     using System;
+    using System.Collections.Generic;
     using System.IO;
     using System.Linq;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -138,6 +139,49 @@ namespace Hyperspace.Tests
                 double expected = q.Zip(decoded, (a, b) => (double)(a - b) * (a - b)).Sum();
                 Assert.AreEqual(expected, lut.Distance(codes), 1e-3 * Math.Max(1, expected));
             }
+        }
+
+        [TestMethod]
+        public void TrainingIsDeterministicAndHandlesFewerSamplesThanCentroids()
+        {
+            var data = TestData.Clustered(600, 32, 9);
+            var a = new ProductQuantizer(32, 4, isOpq: false);
+            var b = new ProductQuantizer(32, 4, isOpq: false);
+            a.Train(data, 2);
+            b.Train(data, 2);
+            foreach (var v in data.Take(20))
+            {
+                CollectionAssert.AreEqual(a.Encode(v), b.Encode(v));
+            }
+
+            // 40 samples for 256 centroids, and only 5 distinct ones: seeding must not loop or throw.
+            var few = Enumerable.Range(0, 40).Select(i => data[i % 5]).ToList();
+            var small = new ProductQuantizer(32, 4, isOpq: false);
+            small.Train(few, 3);
+            Assert.AreEqual(0.0, Error(few[0], small.Decode(small.Encode(few[0]))), 1e-4, "a training sample is reproduced exactly");
+        }
+
+        [TestMethod]
+        public void KMeansPlusPlusSeedingCoversSmallClustersAfterOneIteration()
+        {
+            // Skewed clusters: evenly spaced picks land mostly in the big ones and leave small ones uncovered until Lloyd drifts there.
+            var r = new Random(3);
+            var data = new List<float[]>();
+            for (int c = 0; c < 40; c++)
+            {
+                int size = c < 4 ? 400 : 20;
+                var centre = Enumerable.Range(0, 16).Select(_ => TestData.Gaussian(r) * 4f).ToArray();
+                for (int i = 0; i < size; i++)
+                {
+                    data.Add(centre.Select(x => x + TestData.Gaussian(r) * 0.4f).ToArray());
+                }
+            }
+
+            var pq = new ProductQuantizer(16, 1, isOpq: false);
+            pq.Train(data, 1);
+            double error = data.Average(v => Error(v, pq.Decode(pq.Encode(v))));
+            // One centroid per cluster leaves the in-cluster noise, 0.4 per axis over 16 axes = 1.6; an uncovered cluster adds ~5 for its points.
+            Assert.IsTrue(error < 1.6, $"mean reconstruction error {error}: every one of the 40 clusters should have its own centroid");
         }
 
         [TestMethod]
