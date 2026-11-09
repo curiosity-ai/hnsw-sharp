@@ -82,6 +82,18 @@ CosineDistance.SIMDForUnits // uses SIMD and requires arguments to be "units"
 ```
 But the API allows to inject any custom distance function tailored specifically for your needs.
 
+## Hyperspace (embedding database engine)
+This repository also contains [Hyperspace](Src/Hyperspace/README.md), a package built on the same conventions that ports the algorithms of
+[HyperspaceDB](https://github.com/YARlabs/hyperspace-db): an HNSW index with 12 metrics (including Poincare and Lorentz hyperbolic geometry),
+scalar / binary / ternary / TurboQuant / product quantization with two-pass re-ranking, metadata and geometric filters, BM25 hybrid search,
+a property graph, fuzzy-logic queries, Riemannian math, and the same flat graph (de)serialization style as above.
+```c#
+var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = 768, Metric = DistanceMetric.Cosine, Quantization = QuantizationMode.ScalarInt8 });
+index.Add(embedding, new Dictionary<string, string> { ["title"] = "Intro" });
+var hits = index.Search(query, 10, new SearchOptions { Filter = FilterExpr.Match("title", "Intro") });
+index.Save("index.hsp");
+```
+
 ## Contributing
 Your contributions and suggestions are very welcome! 
 Please note that this project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
