@@ -99,20 +99,17 @@ namespace Hyperspace
         public bool KeepOriginalVectors { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the graph links are chosen with exact distances between the original vectors instead of between the
-        /// compact codes (needs <see cref="KeepOriginalVectors"/>). Searches still traverse with the codes; only the quality of the graph changes. Building is
-        /// slower than with the codes of an aggressive quantizer, but not than with float32 vectors.
-        /// </summary>
-        public bool BuildFromOriginals { get; set; }
-
-        /// <summary>
         /// Gets or sets how many times more candidates than requested the first pass collects before the exact re-ranking pass, when
-        /// <see cref="KeepOriginalVectors"/> is on. 1 turns re-ranking off. Can be overridden per query.
+        /// <see cref="KeepOriginalVectors"/> is on. 1 turns re-ranking off. Can be overridden per query. <c>null</c> (the default) picks what the storage mode
+        /// needs: 4 for the scalar, TurboQuant and hybrid codecs, 25 for ternary, binary and product quantization, whose codes rank neighbours so coarsely that
+        /// a pool of 4x recovered only 0.3-0.45 of the true neighbours in our tests against 0.99-1.0 for 25x.
         /// </summary>
-        public int RerankOversample { get; set; } = 4;
+        public int? RerankOversample { get; set; }
 
         /// <summary>Gets or sets a value indicating whether layer 0 is frozen into contiguous arrays right after loading.</summary>
         public bool FreezeOnLoad { get; set; } = true;
+
+        internal int ResolvedRerankOversample => RerankOversample ?? (Quantization is QuantizationMode.Ternary or QuantizationMode.Binary or QuantizationMode.ProductQuantization or QuantizationMode.OPQ ? 25 : 4);
 
         internal double ResolvedLevelProbability => LevelProbability ?? 1.0 / M;
 
@@ -162,12 +159,7 @@ namespace Hyperspace
                 throw new ArgumentException("MaxLayers must be positive", nameof(MaxLayers));
             }
 
-            if (BuildFromOriginals && !KeepOriginalVectors)
-            {
-                throw new ArgumentException("BuildFromOriginals needs KeepOriginalVectors", nameof(BuildFromOriginals));
-            }
-
-            if (RerankOversample < 1)
+            if (RerankOversample is < 1)
             {
                 throw new ArgumentException("RerankOversample must be at least 1", nameof(RerankOversample));
             }

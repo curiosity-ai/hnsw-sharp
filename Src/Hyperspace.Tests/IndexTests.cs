@@ -168,6 +168,38 @@ namespace Hyperspace.Tests
         }
 
         [TestMethod]
+        [DataRow(QuantizationMode.Ternary, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.Binary, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.ProductQuantization, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.OPQ, DistanceMetric.L2)]
+        public void TheDefaultRerankPoolBeatsTheOldFourTimesPool(QuantizationMode mode, DistanceMetric metric)
+        {
+            // Hundreds of near-equidistant points per cluster in 64 dimensions: about as hard as it gets for an 8-byte code, so this checks the
+            // direction and the size of the gain, not that recall reaches 1 (on 128-dimension data with 200 points per cluster it does; see RESULTS.md).
+            var data = TestData.Clustered(4000, 64, 540);
+            var queries = TestData.Clustered(40, 64, 541);
+            var options = Options(64, metric, mode);
+            options.KeepOriginalVectors = true;              // no RerankOversample: the mode's default pool applies
+            var index = new HyperspaceIndex(options);
+            if (mode is QuantizationMode.ProductQuantization or QuantizationMode.OPQ)
+            {
+                index.TrainProductQuantizer(data, 5);
+            }
+
+            index.AddRange(data);
+            Assert.AreEqual(25, index.Options.ResolvedRerankOversample);
+            bool normalize = metric == DistanceMetric.Cosine;
+            double old = TestData.Recall(index, data, queries, K, metric, normalize, new SearchOptions { RerankOversample = 4 });
+            double recall = TestData.Recall(index, data, queries, K, metric, normalize);
+            Assert.IsTrue(recall >= old + 0.1 && recall >= 0.6, $"{mode}: {old:F3} with a 4x pool, {recall:F3} with the default");
+
+            var mild = Options(64, DistanceMetric.Cosine, QuantizationMode.ScalarInt8);
+            Assert.AreEqual(4, new HyperspaceIndex(mild).Options.ResolvedRerankOversample);
+            mild.RerankOversample = 9;
+            Assert.AreEqual(9, new HyperspaceIndex(mild).Options.ResolvedRerankOversample, "an explicit value wins");
+        }
+
+        [TestMethod]
         public void OriginalsAreOnlyKeptOnRequest()
         {
             var data = TestData.Clustered(200, 32, 540);

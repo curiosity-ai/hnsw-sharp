@@ -244,7 +244,7 @@ namespace Hyperspace
             }
         }
 
-        private int EffectiveOversample(SearchOptions options) => _originals is null ? 1 : Math.Max(1, options.RerankOversample ?? _options.RerankOversample);
+        private int EffectiveOversample(SearchOptions options) => _originals is null ? 1 : Math.Max(1, options.RerankOversample ?? _options.ResolvedRerankOversample);
 
         /// <summary>
         /// The second pass of two-pass search: the candidates the (approximate) first pass collected are scored again, in place, with the exact metric

@@ -33,7 +33,6 @@ namespace Hyperspace
         private readonly ReaderWriterLockSlim? _rw;
         private readonly List<byte[]> _vectors = new List<byte[]>();
         private readonly List<float[]>? _originals;
-        private readonly bool _exactBuild;
         private readonly List<Node> _nodes = new List<Node>();
         private readonly List<IReadOnlyDictionary<string, string>?> _metadata = new List<IReadOnlyDictionary<string, string>?>();
         private readonly IdSet _deleted = new IdSet();
@@ -59,7 +58,6 @@ namespace Hyperspace
             _codec = VectorCodec.Create(_options);
             _rw = _options.ThreadSafe ? new ReaderWriterLockSlim() : null;
             _originals = _options.KeepOriginalVectors ? new List<float[]>() : null;
-            _exactBuild = _options.BuildFromOriginals && _originals is not null;
             _random = _options.Seed is int seed ? new Random(seed) : new Random();
             Graph = new GraphEngine(_options.Graph);
         }

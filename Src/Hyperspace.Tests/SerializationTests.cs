@@ -333,7 +333,7 @@ namespace Hyperspace.Tests
             // Snapshot.
             var snapshot = HyperspaceIndex.Load(SnapshotBytes(index));
             Assert.IsTrue(snapshot.Options.KeepOriginalVectors);
-            Assert.AreEqual(6, snapshot.Options.RerankOversample);
+            Assert.AreEqual(6, snapshot.Options.RerankOversample!.Value);
             CollectionAssert.AreEqual(index.GetVector(9), snapshot.GetVector(9));
             AssertSameAnswers(index, snapshot, queries);
 

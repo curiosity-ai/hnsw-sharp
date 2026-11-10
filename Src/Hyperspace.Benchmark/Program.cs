@@ -136,7 +136,7 @@ foreach (var (label, heuristic) in new[] { ("HNSW.Net (SelectSimple)", Neighbour
 }
 
 // ---- Hyperspace configurations (they store their own copy of the vectors, so the heap delta is the whole footprint)
-var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool Pq, int Rerank)>
+var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool Pq, int? Rerank)>
 {
     ("Hyperspace Float32", o => o.Quantization = QuantizationMode.Float32, false, 1),
     ("Hyperspace Float32 (level p=0.5, as HyperspaceDB)", o => { o.Quantization = QuantizationMode.Float32; o.LevelProbability = 0.5; }, false, 1),
@@ -145,13 +145,13 @@ var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool P
     ("Hyperspace Int4", o => o.Quantization = QuantizationMode.ScalarInt4, false, 1),
     ("Hyperspace Turbo", o => o.Quantization = QuantizationMode.Turbo, false, 1),
     ("Hyperspace Ternary", o => o.Quantization = QuantizationMode.Ternary, false, 1),
-    ("Hyperspace Ternary + rerank x4", o => { o.Quantization = QuantizationMode.Ternary; o.KeepOriginalVectors = true; }, false, 4),
+    ("Hyperspace Ternary + rerank", o => { o.Quantization = QuantizationMode.Ternary; o.KeepOriginalVectors = true; }, false, null),
     ("Hyperspace Binary", o => o.Quantization = QuantizationMode.Binary, false, 1),
-    ("Hyperspace Binary + rerank x4", o => { o.Quantization = QuantizationMode.Binary; o.KeepOriginalVectors = true; }, false, 4),
+    ("Hyperspace Binary + rerank", o => { o.Quantization = QuantizationMode.Binary; o.KeepOriginalVectors = true; }, false, null),
     ("Hyperspace PQ", o => o.Quantization = QuantizationMode.ProductQuantization, true, 1),
-    ("Hyperspace PQ + rerank x4", o => { o.Quantization = QuantizationMode.ProductQuantization; o.KeepOriginalVectors = true; }, true, 4),
+    ("Hyperspace PQ + rerank", o => { o.Quantization = QuantizationMode.ProductQuantization; o.KeepOriginalVectors = true; }, true, null),
     ("Hyperspace OPQ", o => o.Quantization = QuantizationMode.OPQ, true, 1),
-    ("Hyperspace Int8 + rerank x4", o => { o.Quantization = QuantizationMode.ScalarInt8; o.KeepOriginalVectors = true; }, false, 4),
+    ("Hyperspace Int8 + rerank", o => { o.Quantization = QuantizationMode.ScalarInt8; o.KeepOriginalVectors = true; }, false, null),
 };
 
 foreach (var (name, configure, pq, rerank) in configs)
@@ -348,10 +348,10 @@ static class RerankExperiment
         Console.WriteLine("|---|---|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var mode in new[] { QuantizationMode.Ternary, QuantizationMode.Binary, QuantizationMode.ProductQuantization, QuantizationMode.OPQ })
         {
-            foreach (bool exact in new[] { false, true })
+            foreach (bool exact in new[] { false })
             {
                 var sw = Stopwatch.StartNew();
-                var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, M = 16, EfConstruction = 100, Seed = 1, ValidateVectors = false, KeepOriginalVectors = true, BuildFromOriginals = exact });
+                var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, M = 16, EfConstruction = 100, Seed = 1, ValidateVectors = false, KeepOriginalVectors = true });
                 if (mode is QuantizationMode.ProductQuantization or QuantizationMode.OPQ) index.TrainProductQuantizer(data.Take(20000).ToArray(), 8);
                 index.AddRange(data);
                 index.FreezeFlatLayer0();

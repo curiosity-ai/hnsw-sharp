@@ -232,9 +232,9 @@ namespace Hyperspace
             w.WriteInt32(o.ResolvedHeadDimensions);
             w.WriteSingle((float)o.ResolvedLevelProbability);
             w.WriteSingle(o.TernaryThreshold);
-            int flags = (o.FastRouting ? 1 : 0) | (o.DensityPruning ? 2 : 0) | (o.ResolvedNormalize ? 4 : 0) | (o.AnisotropicRefinement ? 8 : 0) | (o.ValidateVectors ? 16 : 0) | (o.KeepOriginalVectors ? 32 : 0) | (o.BuildFromOriginals ? 64 : 0);
+            int flags = (o.FastRouting ? 1 : 0) | (o.DensityPruning ? 2 : 0) | (o.ResolvedNormalize ? 4 : 0) | (o.AnisotropicRefinement ? 8 : 0) | (o.ValidateVectors ? 16 : 0) | (o.KeepOriginalVectors ? 32 : 0);
             w.WriteInt32(flags);
-            w.WriteInt32(o.RerankOversample);
+            w.WriteInt32(o.ResolvedRerankOversample);
             w.WriteString(o.FusionMethod);
             w.WriteInt32((int)o.Bm25.Method);
             w.WriteSingle(o.Bm25.K1);
@@ -629,7 +629,6 @@ namespace Hyperspace
             o.AnisotropicRefinement = (flags & 8) != 0;
             o.ValidateVectors = (flags & 16) != 0;
             o.KeepOriginalVectors = (flags & 32) != 0;
-            o.BuildFromOriginals = (flags & 64) != 0;
             o.RerankOversample = r.ReadInt32();
             o.FusionMethod = r.ReadString();
             o.Bm25 = new Bm25Parameters

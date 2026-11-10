@@ -137,14 +137,7 @@ namespace Hyperspace
 
         private double UpperDist(int id, PreparedQuery q) => _codec.UpperDistance(_vectors[id], q);
 
-        /// <summary>The distance graph construction uses between a node and the vector being inserted: exact when building from the originals.</summary>
-        private double BuildDist(int id, PreparedQuery q, bool upper)
-            => _exactBuild ? Metrics.Distance(_options.Metric, (ReadOnlySpan<float>)_originals![id], q.Coords32) : upper ? UpperDist(id, q) : Dist(id, q);
-
-        private double Pair(int a, int b)
-            => _exactBuild
-                ? Metrics.Distance(_options.Metric, (ReadOnlySpan<float>)_originals![a], _originals[b])
-                : _codec.PairDistance(_vectors[a], _vectors[b]);
+        private double Pair(int a, int b) => _codec.PairDistance(_vectors[a], _vectors[b]);
 
         // ------------------------------------------------------------------ insertion
 
@@ -164,7 +157,7 @@ namespace Hyperspace
             }
 
             int current = _entryPoint;
-            double currentDist = BuildDist(current, q, upper: true);
+            double currentDist = UpperDist(current, q);
 
             // Phase 1: zoom in greedily through the layers above the node's own.
             for (int l = _maxLevel; l > level; l--)
@@ -180,7 +173,7 @@ namespace Hyperspace
                             continue;
                         }
 
-                        double d = BuildDist(nb, q, upper: true);
+                        double d = UpperDist(nb, q);
                         if (d < currentDist)
                         {
                             currentDist = d;
@@ -249,7 +242,7 @@ namespace Hyperspace
             var results = s.Results;
             bool upper = layer > 0;
 
-            double d0 = BuildDist(entry, q, upper);
+            double d0 = upper ? UpperDist(entry, q) : Dist(entry, q);
             s.Visit(entry);
             candidates.Enqueue(entry, d0);
             if (entry != exclude)
@@ -284,7 +277,7 @@ namespace Hyperspace
                 for (int i = 0; i < m; i++)
                 {
                     int nb = batch[i];
-                    double d = BuildDist(nb, q, upper);
+                    double d = upper ? UpperDist(nb, q) : Dist(nb, q);
                     if (results.Count < ef || (results.TryPeek(out _, out double nw) && d < -nw))
                     {
                         candidates.Enqueue(nb, d);

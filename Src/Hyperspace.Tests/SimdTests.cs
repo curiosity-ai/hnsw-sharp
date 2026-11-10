@@ -171,6 +171,20 @@ namespace Hyperspace.Tests
                     codec.Decode(sa, x);
                     codec.Decode(sb, y);
                     double expected = Metrics.Distance(codec.PairMetric, (ReadOnlySpan<float>)x, y);
+                    if (mode == QuantizationMode.Ternary && metric == DistanceMetric.Cosine)
+                    {
+                        // Ternary compares codes by 2 (1 - cos), like its query distance.
+                        double dot = 0, na = 0, nb = 0;
+                        for (int d = 0; d < dim; d++)
+                        {
+                            dot += (double)x[d] * y[d];
+                            na += (double)x[d] * x[d];
+                            nb += (double)y[d] * y[d];
+                        }
+
+                        expected = na * nb < 1e-18 ? 2.0 : Math.Max(2.0 * (1.0 - Math.Clamp(dot / Math.Sqrt(na * nb), -1.0, 1.0)), 0.0);
+                    }
+
                     double actual = codec.PairDistance(sa, sb);
                     Assert.AreEqual(expected, actual, 3e-3 * Math.Max(1.0, Math.Abs(expected)), $"{mode}/{metric} dim {dim} head {head} trial {trial}");
                     Assert.AreEqual(actual, codec.PairDistance(sb, sa), 1e-5 * Math.Max(1.0, Math.Abs(actual)), "symmetric");

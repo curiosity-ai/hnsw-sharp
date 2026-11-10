@@ -148,13 +148,15 @@ namespace Hyperspace
                 return base.PairDistance(a, b);
             }
 
-            double headL2 = 0, headDot = 0;
+            double headL2 = 0, headDot = 0, headNormA = 0, headNormB = 0;
             for (int i = 0; i < _head; i++)
             {
                 double x = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(i * 4, 4));
                 double y = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(i * 4, 4));
                 headL2 += (x - y) * (x - y);
                 headDot += x * y;
+                headNormA += x * x;
+                headNormB += y * y;
             }
 
             int nzOffset = _head * 4;
@@ -193,6 +195,20 @@ namespace Hyperspace
             if (Metric == DistanceMetric.Dot)
             {
                 return 1.0 - (headDot + tailDot);
+            }
+
+            if (Metric == DistanceMetric.Cosine)
+            {
+                // Same form as the query distance, 2 (1 - cos). A decoded ternary vector is shorter than unit length, so comparing it by the squared L2
+                // the generic path would use puts the pair distances on a smaller scale than the query distances that the neighbour-selection
+                // heuristic weighs them against, and the graph it builds is poor.
+                double normSq = (headNormA + (sa * sa * countA)) * (headNormB + (sb * sb * countB));
+                if (normSq < 1e-18)
+                {
+                    return 2.0;
+                }
+
+                return Math.Max(2.0 * (1.0 - Math.Clamp((headDot + tailDot) / Math.Sqrt(normSq), -1.0, 1.0)), 0.0);
             }
 
             return headL2 + Math.Max((sa * sa * countA) + (sb * sb * countB) - (2.0 * tailDot), 0.0);
