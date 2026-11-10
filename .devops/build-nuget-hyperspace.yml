@@ -18,7 +18,11 @@ pool:
   vmImage: 'windows-latest'
 
 steps:
-- task: NuGetToolInstaller@0
+- task: NuGetToolInstaller@1
+  displayName: 'Install NuGet 7.6 or later (API key service connections need it)'
+  inputs:
+    versionSpec: '>=7.6.0'
+    checkLatest: true
 
 
 - task: PowerShell@2
