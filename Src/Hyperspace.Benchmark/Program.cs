@@ -10,8 +10,9 @@ using HNSW.Net;
 using Hyperspace;
 
 if (args.Contains("--micro")) { Micro.Run(args); return; }
+if (args.Contains("--ab")) { AB.Run(args); return; }
 #if DIAG
-if (args.Contains("--evals")) { Evals.Run(); return; }
+if (args.Contains("--evals")) { Evals.Run(args); return; }
 #endif
 
 int n = 20000, dim = 128, nq = 500, k = 10;
@@ -228,9 +229,16 @@ static class Micro
 // ---- --evals (build with -p:DefineConstants=DIAG): distance evaluations per query, to separate traversal length from the cost of one distance
 static class Evals
 {
-    public static void Run()
+    public static void Run(string[] args)
     {
         int n = 20000, dim = 128;
+        string? modes = null;
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == "--n") n = int.Parse(args[i + 1]);
+            if (args[i] == "--only") modes = args[i + 1];
+        }
+
         var rnd = new Random(1);
         double G() => Math.Sqrt(-2 * Math.Log(1 - rnd.NextDouble())) * Math.Cos(2 * Math.PI * rnd.NextDouble());
         var centres = Enumerable.Range(0, 100).Select(_ => Enumerable.Range(0, dim).Select(__ => (float)G()).ToArray()).ToArray();
@@ -238,8 +246,10 @@ static class Evals
         var data = Gen(n); var queries = Gen(500);
         Console.WriteLine("| mode | ef | evaluations / query | us / query | ns / evaluation |");
         Console.WriteLine("|---|---:|---:|---:|---:|");
+        Console.WriteLine($"n = {n}");
         foreach (var mode in new[] { QuantizationMode.Float32, QuantizationMode.ScalarInt8, QuantizationMode.ScalarInt4, QuantizationMode.Turbo, QuantizationMode.Ternary, QuantizationMode.Binary })
         {
+            if (modes is not null && !modes.Split(',').Contains(mode.ToString())) continue;
             var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, M = 16, EfConstruction = 100, Seed = 1, ValidateVectors = false });
             index.AddRange(data);
             index.FreezeFlatLayer0();
@@ -249,13 +259,60 @@ static class Evals
                 var so = new SearchOptions { Ef = ef };
                 for (int w = 0; w < 100; w++) index.Search(queries[w], results, so);
                 HyperspaceIndex.DiagEvaluations = 0;
-                var sw = Stopwatch.StartNew();
                 for (int q = 0; q < queries.Length; q++) index.Search(queries[q], results, so);
-                double us = sw.Elapsed.TotalMilliseconds * 1000 / queries.Length;
                 double evals = HyperspaceIndex.DiagEvaluations / (double)queries.Length;
-                Console.WriteLine($"| {mode} | {ef} | {evals:F0} | {us:F0} | {us * 1000 / evals:F0} |");
+
+                // The least-disturbed of several rounds is the best estimate of what the code costs; the median shows how noisy the machine was.
+                var rounds = new List<double>();
+                for (int r = 0; r < 9; r++)
+                {
+                    var sw = Stopwatch.StartNew();
+                    for (int q = 0; q < queries.Length; q++) index.Search(queries[q], results, so);
+                    rounds.Add(sw.Elapsed.TotalMilliseconds * 1000 / queries.Length);
+                }
+
+                rounds.Sort();
+                double us = rounds[0], median = rounds[rounds.Count / 2];
+                Console.WriteLine($"| {mode} | {ef} | {evals:F0} | {us:F0} (median {median:F0}) | {us * 1000 / evals:F0} |");
             }
         }
     }
 }
 #endif
+
+// ---- --ab: alternate two settings of the same index within one process, so machine noise hits both equally
+static class AB
+{
+    public static void Run(string[] args)
+    {
+        int n = 20000, dim = 128;
+        for (int i = 0; i < args.Length - 1; i++) { if (args[i] == "--n") n = int.Parse(args[i + 1]); if (args[i] == "--dim") dim = int.Parse(args[i + 1]); }
+        var rnd = new Random(1);
+        double G() => Math.Sqrt(-2 * Math.Log(1 - rnd.NextDouble())) * Math.Cos(2 * Math.PI * rnd.NextDouble());
+        var centres = Enumerable.Range(0, 100).Select(_ => Enumerable.Range(0, dim).Select(__ => (float)G()).ToArray()).ToArray();
+        float[][] Gen(int c) => Enumerable.Range(0, c).Select(_ => { var cc = centres[rnd.Next(100)]; var v = cc.Select(x => x + (float)G() * 0.15f).ToArray(); var s = Math.Sqrt(v.Sum(x => (double)x * x)); return v.Select(x => (float)(x / s)).ToArray(); }).ToArray();
+        var data = Gen(n); var queries = Gen(500);
+        var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = QuantizationMode.Float32, M = 16, EfConstruction = 100, Seed = 1, ValidateVectors = false });
+        index.AddRange(data);
+        index.FreezeFlatLayer0();
+        var results = new SearchResult[10];
+        var so = new SearchOptions { Ef = 64 };
+        var settings = new[] { 0, 4 };
+        var times = settings.ToDictionary(x => x, _ => new List<double>());
+        for (int round = 0; round < 25; round++)
+        {
+            foreach (int lines in settings)
+            {
+                HyperspaceIndex.PrefetchLines = lines;
+                var sw = Stopwatch.StartNew();
+                for (int q = 0; q < queries.Length; q++) index.Search(queries[q], results, so);
+                times[lines].Add(sw.Elapsed.TotalMilliseconds * 1000 / queries.Length);
+            }
+        }
+
+        Console.WriteLine($"n = {n}, dim = {dim}, ef = 64, Float32; us per query over 25 interleaved rounds");
+        Console.WriteLine("| prefetch lines (0 = original single-pass loop) | min | median | p25 |");
+        Console.WriteLine("|---:|---:|---:|---:|");
+        foreach (int lines in settings) { var t = times[lines]; t.Sort(); Console.WriteLine($"| {lines} | {t[0]:F1} | {t[t.Count / 2]:F1} | {t[t.Count / 4]:F1} |"); }
+    }
+}

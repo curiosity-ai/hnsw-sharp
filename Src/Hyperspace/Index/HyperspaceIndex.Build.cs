@@ -21,6 +21,19 @@ namespace Hyperspace
 
             public PriorityQueue<int, double> Results { get; } = new PriorityQueue<int, double>();
 
+            private int[] _batch = new int[64];
+
+            /// <summary>A reusable buffer for the unvisited neighbours of the node being expanded.</summary>
+            public int[] Batch(int length)
+            {
+                if (_batch.Length < length)
+                {
+                    _batch = new int[Math.Max(length, _batch.Length * 2)];
+                }
+
+                return _batch;
+            }
+
             /// <summary>Output of a layer search during construction.</summary>
             public List<(int Id, double Distance)> Found { get; } = new List<(int, double)>();
 
@@ -84,6 +97,35 @@ namespace Hyperspace
         [ThreadStatic]
         internal static long DiagEvaluations;
 #endif
+
+        /// <summary>
+        /// Asks the CPU to start loading the first cache lines of a stored vector. Neighbours are visited in an order that follows the graph, not
+        /// memory, so every distance would otherwise wait for its vector to arrive from RAM; issuing the requests for all of a node's neighbours before
+        /// computing any distance lets those loads overlap. Only a hint: it never faults and is ignored where unsupported.
+        /// </summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private unsafe void PrefetchVector(int id)
+        {
+            if (System.Runtime.Intrinsics.X86.Sse.IsSupported)
+            {
+                var vector = _vectors[id];
+                byte* p = (byte*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(vector));
+                System.Runtime.Intrinsics.X86.Sse.Prefetch0(p);
+                if (vector.Length > 64)
+                {
+                    System.Runtime.Intrinsics.X86.Sse.Prefetch0(p + 64);
+                }
+
+                if (PrefetchLines > 2 && vector.Length > 128)
+                {
+                    System.Runtime.Intrinsics.X86.Sse.Prefetch0(p + 128);
+                    System.Runtime.Intrinsics.X86.Sse.Prefetch0(p + 192);
+                }
+            }
+        }
+
+        /// <summary>Cache lines of each neighbour's vector to prefetch (0 turns prefetching off); a field so benchmarks can compare settings in one process.</summary>
+        internal static int PrefetchLines = 4;
 
         private double Dist(int id, PreparedQuery q, int truncation = 0)
         {
@@ -215,13 +257,26 @@ namespace Hyperspace
                     break;
                 }
 
-                foreach (int nb in LinksOf(c, layer))
+                var links = LinksOf(c, layer);
+                var batch = s.Batch(links.Length);
+                int m = 0;
+                foreach (int nb in links)
                 {
                     if (nb == exclude || !s.Visit(nb))
                     {
                         continue;
                     }
 
+                    batch[m++] = nb;
+                    if (PrefetchLines > 0)
+                    {
+                        PrefetchVector(nb);
+                    }
+                }
+
+                for (int i = 0; i < m; i++)
+                {
+                    int nb = batch[i];
                     double d = upper ? UpperDist(nb, q) : Dist(nb, q);
                     if (results.Count < ef || (results.TryPeek(out _, out double nw) && d < -nw))
                     {

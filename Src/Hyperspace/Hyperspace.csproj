@@ -6,6 +6,7 @@
     <Platforms>AnyCPU</Platforms>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>Hyperspace</RootNamespace>
     <AssemblyName>Hyperspace</AssemblyName>

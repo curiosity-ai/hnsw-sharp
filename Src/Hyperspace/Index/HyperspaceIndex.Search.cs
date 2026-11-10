@@ -390,6 +390,26 @@ namespace Hyperspace
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         private bool IsAllowed(int id, IdSet? allowed) => allowed is not null ? allowed.Contains(id) : _deletedCount == 0 || !_deleted.Contains(id);
 
+        /// <summary>Offers a scored neighbour to the candidate queue and, if it is allowed and good enough, to the bounded result set.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private void Consider(int node, double distance, int ef, IdSet? allowed, PriorityQueue<int, double> candidates, PriorityQueue<int, double> results)
+        {
+            if (results.Count >= ef && results.TryPeek(out _, out double negWorst) && distance > -negWorst)
+            {
+                return;
+            }
+
+            candidates.Enqueue(node, distance);
+            if (IsAllowed(node, allowed))
+            {
+                results.Enqueue(node, -distance);
+                if (results.Count > ef)
+                {
+                    results.Dequeue();
+                }
+            }
+        }
+
         private void SearchLayer0(int entry, PreparedQuery q, int k, int ef, IdSet? allowed, int truncation, CancellationToken ct, List<(int Id, double Distance)> output)
         {
             var s = Scratch;
@@ -418,28 +438,35 @@ namespace Hyperspace
                     ct.ThrowIfCancellationRequested();
                 }
 
-                foreach (int nb in Layer0Of(c))
+                var links = Layer0Of(c);
+                if (PrefetchLines == 0)
                 {
-                    if (!s.Visit(nb))
+                    foreach (int nb in links)
                     {
-                        continue;
-                    }
-
-                    double d = Dist(nb, q, truncation);
-                    if (results.Count >= ef && results.TryPeek(out _, out double nw) && d > -nw)
-                    {
-                        continue;
-                    }
-
-                    candidates.Enqueue(nb, d);
-                    if (IsAllowed(nb, allowed))
-                    {
-                        results.Enqueue(nb, -d);
-                        if (results.Count > ef)
+                        if (s.Visit(nb))
                         {
-                            results.Dequeue();
+                            Consider(nb, Dist(nb, q, truncation), ef, allowed, candidates, results);
                         }
                     }
+
+                    continue;
+                }
+
+                // Gather the unvisited neighbours and ask for their vectors first, so the loads overlap instead of queueing behind each distance.
+                var batch = s.Batch(links.Length);
+                int m = 0;
+                foreach (int nb in links)
+                {
+                    if (s.Visit(nb))
+                    {
+                        batch[m++] = nb;
+                        PrefetchVector(nb);
+                    }
+                }
+
+                for (int i = 0; i < m; i++)
+                {
+                    Consider(batch[i], Dist(batch[i], q, truncation), ef, allowed, candidates, results);
                 }
             }
 
