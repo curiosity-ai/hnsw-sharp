@@ -80,6 +80,19 @@ Product quantization needs codebooks: call `index.TrainProductQuantizer(samples)
 `ProductQuantizer` in the options). Binary, ternary, TurboQuant and OPQ rotate vectors with `TurboRotation`, an `O(D log D)` randomized
 Walsh-Hadamard transform that is exactly orthogonal.
 
+## Allocation-free queries
+
+`index.Search(query, k)` allocates only the result array. To avoid even that, give it the destination:
+
+```csharp
+Span<SearchResult> hits = stackalloc SearchResult[10];     // or a reused array
+int count = index.Search(query, hits);
+```
+
+An unfiltered, non-hybrid query then allocates nothing once the calling thread is warm, for every storage mode and metric (the prepared query, its lookup
+tables and the traversal buffers are reused per thread). Filters, hybrid text, graph restrictions and fuzzy queries allocate the sets and rankings they compute.
+Indexing reuses the same buffers; what it still allocates is what the index stores (the encoded vector, the node and its link lists).
+
 ## Filters, hybrid search, fuzzy queries
 
 * **Filters** (`FilterExpr`): `Match`, `Prefix`, `Range`, `And`, `Or`, `Not`, plus geometric `InBox`, `InBall` (hyperbolic for 33-dimensional
@@ -139,6 +152,7 @@ implementation.
 * Approximate codecs report the `Cosine` metric as `2(1 - cos)`, the same scale as the exact distance.
 * `ScalarInt8` uses a per-vector scale except for Poincare (where it keeps HyperspaceDB's fixed scale), so unnormalized embeddings do not clamp.
 * `Binary` compares the rotated query to the sign bits asymmetrically for every metric (an angular approximation).
+* `LevelProbability` defaults to `1/M` (the HNSW paper); HyperspaceDB uses 0.5, which doubled the build time and added 14 % memory in our tests.
 * Graph construction runs under a reader-writer lock instead of HyperspaceDB's lock-free node updates: searches are parallel, writes are exclusive.
 * Fuzzy queries, momentum search and graph-restricted search are index methods here; in HyperspaceDB they live in the server layer.
 * The lexical index is rebuilt on demand rather than persisted, and metadata indexes are rebuilt on load.
