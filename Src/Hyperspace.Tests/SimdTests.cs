@@ -200,6 +200,26 @@ namespace Hyperspace.Tests
             Assert.IsTrue(before >= 0);
         }
 
+        [TestMethod]
+        public void FreezingReleasesTheSymmetricTableAndInsertingRebuildsIt()
+        {
+            var data = TestData.Clustered(1500, 32, 3);
+            var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = 32, Metric = DistanceMetric.L2, Quantization = QuantizationMode.ProductQuantization, Seed = 1 });
+            index.TrainProductQuantizer(data, 2);
+            index.AddRange(data.Take(1000).ToArray());
+            Assert.IsTrue(index.Quantizer!.HasSymmetricTable, "inserting builds it");
+
+            long before = GC.GetTotalMemory(true);
+            index.FreezeFlatLayer0();
+            Assert.IsFalse(index.Quantizer.HasSymmetricTable, "freezing ends the build");
+            Assert.IsTrue(GC.GetTotalMemory(true) < before - (index.Quantizer.NumSubvectors * 65536 * 4 / 2), "its memory is actually returned");
+
+            index.AddRange(data.Skip(1000).ToArray());                // thaws, rebuilds the table, links
+            Assert.IsTrue(index.Quantizer.HasSymmetricTable);
+            Assert.AreEqual(1500, index.Count);
+            Assert.AreEqual(1200, index.Search(data[1200], 1, new SearchOptions { Ef = 200 })[0].Id);
+        }
+
         private static double Reference(QuantizationMode mode, DistanceMetric metric, float[] decoded, float[] q)
         {
             double dot = 0, nd = 0, nq = 0, l2 = 0;

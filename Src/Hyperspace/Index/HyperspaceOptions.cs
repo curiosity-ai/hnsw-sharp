@@ -99,6 +99,13 @@ namespace Hyperspace
         public bool KeepOriginalVectors { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the graph links are chosen with exact distances between the original vectors instead of between the
+        /// compact codes (needs <see cref="KeepOriginalVectors"/>). Searches still traverse with the codes; only the quality of the graph changes. Building is
+        /// slower than with the codes of an aggressive quantizer, but not than with float32 vectors.
+        /// </summary>
+        public bool BuildFromOriginals { get; set; }
+
+        /// <summary>
         /// Gets or sets how many times more candidates than requested the first pass collects before the exact re-ranking pass, when
         /// <see cref="KeepOriginalVectors"/> is on. 1 turns re-ranking off. Can be overridden per query.
         /// </summary>
@@ -153,6 +160,11 @@ namespace Hyperspace
             if (MaxLayers < 1)
             {
                 throw new ArgumentException("MaxLayers must be positive", nameof(MaxLayers));
+            }
+
+            if (BuildFromOriginals && !KeepOriginalVectors)
+            {
+                throw new ArgumentException("BuildFromOriginals needs KeepOriginalVectors", nameof(BuildFromOriginals));
             }
 
             if (RerankOversample < 1)

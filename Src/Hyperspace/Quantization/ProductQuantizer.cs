@@ -399,6 +399,15 @@ namespace Hyperspace
             }
         }
 
+        /// <summary>Whether the symmetric table is currently held in memory.</summary>
+        internal bool HasSymmetricTable => _symmetric is not null;
+
+        /// <summary>
+        /// Drops the symmetric table (<c>NumSubvectors * 256 KiB</c>), which only inserting needs. The next insert builds it again, which takes a few
+        /// milliseconds per sub-vector.
+        /// </summary>
+        internal void ReleaseSymmetricTable() => _symmetric = null;
+
         /// <summary>Precomputes the table of squared distances from the query to every centroid.</summary>
         public LookupTable ComputeLookupTable(ReadOnlySpan<float> query) => ComputeLookupTable(query, null);
 

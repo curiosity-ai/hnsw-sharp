@@ -11,6 +11,7 @@ using Hyperspace;
 
 if (args.Contains("--micro")) { Micro.Run(args); return; }
 if (args.Contains("--ab")) { AB.Run(args); return; }
+if (args.Contains("--rerank")) { RerankExperiment.Run(args); return; }
 #if DIAG
 if (args.Contains("--evals")) { Evals.Run(args); return; }
 #endif
@@ -321,5 +322,55 @@ static class AB
         Console.WriteLine("| prefetch lines (0 = original single-pass loop) | min | median | p25 |");
         Console.WriteLine("|---:|---:|---:|---:|");
         foreach (int lines in settings) { var t = times[lines]; t.Sort(); Console.WriteLine($"| {lines} | {t[0]:F1} | {t[t.Count / 2]:F1} | {t[t.Count / 4]:F1} |"); }
+    }
+}
+
+// ---- --rerank: what limits the recall of the aggressive codecs - the pool re-ranked, or the graph built from their codes?
+static class RerankExperiment
+{
+    public static void Run(string[] args)
+    {
+        int n = 20000, dim = 128, nq = 300, k = 10;
+        for (int i = 0; i < args.Length - 1; i++) { if (args[i] == "--n") n = int.Parse(args[i + 1]); if (args[i] == "--dim") dim = int.Parse(args[i + 1]); }
+        var rnd = new Random(1);
+        double G() => Math.Sqrt(-2 * Math.Log(1 - rnd.NextDouble())) * Math.Cos(2 * Math.PI * rnd.NextDouble());
+        var centres = Enumerable.Range(0, 100).Select(_ => Enumerable.Range(0, dim).Select(__ => (float)G()).ToArray()).ToArray();
+        float[][] Gen(int c) => Enumerable.Range(0, c).Select(_ => { var cc = centres[rnd.Next(100)]; var v = cc.Select(x => x + (float)G() * 0.15f).ToArray(); var s = Math.Sqrt(v.Sum(x => (double)x * x)); return v.Select(x => (float)(x / s)).ToArray(); }).ToArray();
+        var data = Gen(n); var queries = Gen(nq);
+        var truth = new HashSet<int>[nq];
+        Parallel.For(0, nq, qi =>
+        {
+            truth[qi] = Enumerable.Range(0, n).Select(i => (i, d: Metrics.Distance(DistanceMetric.Cosine, (ReadOnlySpan<float>)queries[qi], data[i]))).OrderBy(x => x.d).Take(k).Select(x => x.i).ToHashSet();
+        });
+
+        Console.WriteLine($"n={n} dim={dim}, recall@{k} at ef=256; columns are the re-ranked pool as a multiple of k (0 = no re-ranking)");
+        Console.WriteLine("| mode | graph built from | build | 0 | x4 | x10 | x25 | x50 | QPS at x10 |");
+        Console.WriteLine("|---|---|---:|---:|---:|---:|---:|---:|---:|");
+        foreach (var mode in new[] { QuantizationMode.Ternary, QuantizationMode.Binary, QuantizationMode.ProductQuantization, QuantizationMode.OPQ })
+        {
+            foreach (bool exact in new[] { false, true })
+            {
+                var sw = Stopwatch.StartNew();
+                var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, M = 16, EfConstruction = 100, Seed = 1, ValidateVectors = false, KeepOriginalVectors = true, BuildFromOriginals = exact });
+                if (mode is QuantizationMode.ProductQuantization or QuantizationMode.OPQ) index.TrainProductQuantizer(data.Take(20000).ToArray(), 8);
+                index.AddRange(data);
+                index.FreezeFlatLayer0();
+                double build = sw.Elapsed.TotalSeconds;
+                var cells = new List<string>();
+                double qps10 = 0;
+                foreach (int over in new[] { 1, 4, 10, 25, 50 })
+                {
+                    var so = new SearchOptions { Ef = 256, RerankOversample = over };
+                    int hit = 0;
+                    var results = new SearchResult[k];
+                    sw.Restart();
+                    for (int q = 0; q < nq; q++) { int c = index.Search(queries[q], results, so); for (int r = 0; r < c; r++) if (truth[q].Contains(results[r].Id)) hit++; }
+                    if (over == 10) qps10 = nq / sw.Elapsed.TotalSeconds;
+                    cells.Add($"{hit / (double)(nq * k):F3}");
+                }
+
+                Console.WriteLine($"| {mode} | {(exact ? "originals" : "codes")} | {build:F1} s | {string.Join(" | ", cells)} | {qps10:N0} |");
+            }
+        }
     }
 }
