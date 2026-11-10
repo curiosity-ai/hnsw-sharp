@@ -28,7 +28,23 @@ namespace Hyperspace
         /// <summary>Cancels the MMSE shrinkage of the reconstruction (E[&lt;x^, q&gt;] / E[&lt;x, q&gt;] is about 0.98006).</summary>
         internal const double BiasCorrection = 1.0203407;
 
+        private static readonly float[] CentroidsF = Array.ConvertAll(Centroids, c => (float)c);
+
+        /// <summary>For a packed byte, the sum of the squares of its two centroids.</summary>
+        private static readonly float[] PairSquares = BuildPairSquares();
+
         private readonly int _head;
+
+        private static float[] BuildPairSquares()
+        {
+            var t = new float[256];
+            for (int b = 0; b < 256; b++)
+            {
+                t[b] = (float)((Centroids[b >> 4] * Centroids[b >> 4]) + (Centroids[b & 15] * Centroids[b & 15]));
+            }
+
+            return t;
+        }
 
         public TurboCodec(int dimension, DistanceMetric metric, int headDimensions)
             : base(dimension, metric)
@@ -196,6 +212,18 @@ namespace Hyperspace
             var tail = TailDim > 0 ? query.Slice(_head).ToArray() : Array.Empty<float>();
             TurboRotation.Rotate(tail);
             q.Rotated = tail;
+            double sq = 0;
+            foreach (var x in tail)
+            {
+                sq += (double)x * x;
+            }
+
+            q.TailNormSq = sq;
+            if (Metric is DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot && tail.Length >= 2)
+            {
+                q.Table = QuantSimd.BuildNibblePairTable(tail, CentroidsF, tail.Length / 2);
+            }
+
             return q;
         }
 
@@ -256,34 +284,38 @@ namespace Hyperspace
 
             double scale = (norm / Math.Sqrt(tailDim)) * BiasCorrection;
             int packedOffset = 8 + (_head * 4);
-            double acc = 0;
+
+            // The tail is a sum over packed bytes (two dimensions each): one table lookup per byte gives its dot product with the query,
+            // and a fixed table gives the squared norm of the codes, so L2 follows from |v - q|^2 = |v|^2 - 2 v.q + |q|^2.
+            int pairs = tailDim / 2;
+            var packed = stored.Slice(packedOffset, (tailDim + 1) / 2);
+            double tailDot = pairs > 0 ? QuantSimd.SumTable(packed.Slice(0, pairs), query.Table!) : 0.0;
+            double codeSq = 0;
             if (Metric == DistanceMetric.L2)
             {
-                Span<double> scaled = stackalloc double[16];
-                for (int i = 0; i < 16; i++)
+                float sqAcc = 0;
+                for (int p = 0; p < pairs; p++)
                 {
-                    scaled[i] = Centroids[i] * scale;
+                    sqAcc += PairSquares[packed[p]];
                 }
 
-                for (int i = 0; i < tailDim; i++)
-                {
-                    byte packed = stored[packedOffset + (i / 2)];
-                    int bin = (i & 1) == 1 ? packed & 0x0F : packed >> 4;
-                    double d = scaled[bin] - rotated[i];
-                    acc += d * d;
-                }
-
-                return headDistSq + acc;
+                codeSq = sqAcc;
             }
 
-            for (int i = 0; i < tailDim; i++)
+            if ((tailDim & 1) == 1)
             {
-                byte packed = stored[packedOffset + (i / 2)];
-                int bin = (i & 1) == 1 ? packed & 0x0F : packed >> 4;
-                acc += Centroids[bin] * rotated[i];
+                // The unused low nibble of the last byte is not a coordinate.
+                double c = Centroids[packed[pairs] >> 4];
+                tailDot += c * rotated[tailDim - 1];
+                codeSq += c * c;
             }
 
-            double dot = headDot + (acc * scale);
+            if (Metric == DistanceMetric.L2)
+            {
+                return headDistSq + Math.Max((scale * scale * codeSq) - (2.0 * scale * tailDot) + query.TailNormSq, 0.0);
+            }
+
+            double dot = headDot + (tailDot * scale);
             return Metric == DistanceMetric.Dot ? 1.0 - dot : Math.Max(2.0 * (1.0 - dot), 0.0);
         }
     }

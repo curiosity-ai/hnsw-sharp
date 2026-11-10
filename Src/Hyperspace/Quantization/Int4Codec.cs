@@ -19,7 +19,34 @@ namespace Hyperspace
     internal sealed class Int4Codec : VectorCodec
     {
         private const int BlockSize = 16;
+        private static readonly float[] Levels = Enumerable16();
+
+        /// <summary>For a packed byte, the sum of the squares of its two levels.</summary>
+        private static readonly float[] PairSquares = BuildPairSquares();
+
         private readonly int _head;
+
+        private static float[] Enumerable16()
+        {
+            var l = new float[16];
+            for (int i = 0; i < 16; i++)
+            {
+                l[i] = i - 8;
+            }
+
+            return l;
+        }
+
+        private static float[] BuildPairSquares()
+        {
+            var t = new float[256];
+            for (int b = 0; b < 256; b++)
+            {
+                t[b] = ((b >> 4) - 8) * ((b >> 4) - 8) + (((b & 15) - 8) * ((b & 15) - 8));
+            }
+
+            return t;
+        }
 
         public Int4Codec(int dimension, DistanceMetric metric, int headDimensions)
             : base(dimension, metric)
@@ -115,13 +142,74 @@ namespace Hyperspace
             }
         }
 
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        {
+            var q = base.Prepare(query);
+            if (IsFastMetric && TailDim > 0)
+            {
+                var tail = q.Coords32.AsSpan(_head);
+                double sq = 0;
+                foreach (var x in tail)
+                {
+                    sq += (double)x * x;
+                }
+
+                q.TailNormSq = sq;
+                q.Table = QuantSimd.BuildNibblePairTable(tail, Levels, Blocks * (BlockSize / 2));
+            }
+
+            return q;
+        }
+
+        private bool IsFastMetric => Metric is DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot;
+
         public override bool SupportsTruncation => true;
 
         public override double Distance(ReadOnlySpan<byte> stored, PreparedQuery query, int truncation = 0)
         {
-            var buf = Scratch(Dimension);
-            Reconstruct(stored, buf.AsSpan(0, Dimension));
-            return DistanceFromDecoded(buf.AsSpan(0, Dimension), query, 0, truncation);
+            if (truncation > 0 || !IsFastMetric)
+            {
+                var buf = Scratch(Dimension);
+                Reconstruct(stored, buf.AsSpan(0, Dimension));
+                return DistanceFromDecoded(buf.AsSpan(0, Dimension), query, 0, truncation);
+            }
+
+            double headDistSq = 0, headDot = 0;
+            for (int i = 0; i < _head; i++)
+            {
+                double h = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(i * 4, 4));
+                double diff = h - query.Coords[i];
+                headDistSq += diff * diff;
+                headDot += h * query.Coords[i];
+            }
+
+            // Per block: scale * (sum of one table lookup per byte). Padded nibbles hold the level 0, so they add nothing.
+            int pos = _head * 4;
+            int blocks = (int)BinaryPrimitives.ReadUInt32LittleEndian(stored.Slice(pos, 4));
+            int scalesOffset = pos + 4;
+            int packedOffset = scalesOffset + (blocks * 4);
+            var table = query.Table!;
+            double tailDot = 0, codeSq = 0;
+            for (int b = 0; b < blocks; b++)
+            {
+                double scale = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(scalesOffset + (b * 4), 4));
+                var bytes = stored.Slice(packedOffset + (b * (BlockSize / 2)), BlockSize / 2);
+                tailDot += scale * QuantSimd.SumTable(bytes, table, b * (BlockSize / 2));
+                if (Metric != DistanceMetric.Dot)
+                {
+                    float sq = 0;
+                    foreach (byte x in bytes)
+                    {
+                        sq += PairSquares[x];
+                    }
+
+                    codeSq += scale * scale * sq;
+                }
+            }
+
+            return Metric == DistanceMetric.Dot
+                ? 1.0 - (headDot + tailDot)
+                : headDistSq + Math.Max(codeSq - (2.0 * tailDot) + query.TailNormSq, 0.0);
         }
     }
 }

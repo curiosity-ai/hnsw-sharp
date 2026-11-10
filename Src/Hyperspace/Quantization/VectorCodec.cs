@@ -71,6 +71,9 @@ namespace Hyperspace
         /// <summary>Gets codec-specific state (rotated tail, lookup table...).</summary>
         internal float[]? Rotated { get; set; }
 
+        /// <summary>Gets the per-query lookup table of the bit-packed codecs (see <see cref="QuantSimd"/>).</summary>
+        internal float[]? Table { get; set; }
+
         /// <summary>Gets the product-quantization lookup table.</summary>
         internal ProductQuantizer.LookupTable? Lookup { get; set; }
     }

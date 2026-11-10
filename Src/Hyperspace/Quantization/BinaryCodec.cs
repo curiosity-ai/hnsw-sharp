@@ -73,25 +73,14 @@ namespace Hyperspace
         {
             var q = base.Prepare(query);
             q.Rotated = TurboRotation.Rotated(query);
+            q.Table = QuantSimd.BuildSignTable(q.Rotated, BitBytes);
             return q;
         }
 
         public override double Distance(ReadOnlySpan<byte> stored, PreparedQuery query, int truncation = 0)
         {
-            var r = query.Rotated!;
-            double dot = 0;
-            double total = 0;
-            for (int i = 0; i < Dimension; i++)
-            {
-                double x = r[i];
-                total += x;
-                if (((stored[i >> 3] >> (i & 7)) & 1) == 1)
-                {
-                    dot += x;
-                }
-            }
-
-            double signedDot = (2.0 * dot) - total;
+            // sum over dimensions of sign(code) * rotatedQuery, one table lookup per byte of bits
+            double signedDot = QuantSimd.SumTable(stored.Slice(0, BitBytes), query.Table!);
             double denom = Math.Sqrt(Dimension) * query.Norm;
             if (denom <= 1e-12)
             {

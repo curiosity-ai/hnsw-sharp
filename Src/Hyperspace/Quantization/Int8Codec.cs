@@ -7,6 +7,7 @@ namespace Hyperspace
 {
     using System;
     using System.Buffers.Binary;
+    using System.Runtime.InteropServices;
 
     /// <summary>
     /// Scalar 8-bit quantization. Layout: <c>sbyte[dim] | float scale | float alpha</c>.
@@ -144,10 +145,8 @@ namespace Hyperspace
         public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination)
         {
             float step = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(Dimension, 4)) / 127f;
-            for (int i = 0; i < destination.Length; i++)
-            {
-                destination[i] = (sbyte)stored[i] * step;
-            }
+            int n = Math.Min(destination.Length, Dimension);
+            QuantSimd.DecodeInt8(MemoryMarshal.Cast<byte, sbyte>(stored.Slice(0, n)), step, destination);
         }
 
         public override double Distance(ReadOnlySpan<byte> stored, PreparedQuery query, int truncation = 0)
@@ -156,43 +155,23 @@ namespace Hyperspace
             double step = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(Dimension, 4)) / 127.0;
             var q = query.Coords;
 
+            var codes = MemoryMarshal.Cast<byte, sbyte>(stored.Slice(0, n));
+            var q32 = query.Coords32.AsSpan(0, n);
+            float step32 = (float)step;
+
             switch (Metric)
             {
                 case DistanceMetric.L2:
                 case DistanceMetric.Cosine:
-                    {
-                        double sum = 0;
-                        for (int i = 0; i < n; i++)
-                        {
-                            double d = ((sbyte)stored[i] * step) - q[i];
-                            sum += d * d;
-                        }
-
-                        return sum;
-                    }
+                    return QuantSimd.L2Int8(codes, q32, step32);
 
                 case DistanceMetric.Dot:
-                    {
-                        double dot = 0;
-                        for (int i = 0; i < n; i++)
-                        {
-                            dot += (sbyte)stored[i] * step * q[i];
-                        }
-
-                        return 1.0 - dot;
-                    }
+                    return 1.0 - (QuantSimd.DotInt8(codes, q32) * step);
 
                 case DistanceMetric.Poincare when truncation <= 0:
                     {
-                        double sum = 0;
-                        for (int i = 0; i < n; i++)
-                        {
-                            double d = ((sbyte)stored[i] * step) - q[i];
-                            sum += d * d;
-                        }
-
                         double alpha = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(Dimension + 4, 4));
-                        return Metrics.PoincareFromAlpha(sum, alpha, query.Alpha);
+                        return Metrics.PoincareFromAlpha(QuantSimd.L2Int8(codes, q32, step32), alpha, query.Alpha);
                     }
 
                 case DistanceMetric.Lorentz when truncation <= 0 && n >= 2:

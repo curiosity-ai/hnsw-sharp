@@ -175,6 +175,10 @@ namespace Hyperspace
                 }
 
                 q.TailNormSq = sq;
+                if (Metric is DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot)
+                {
+                    q.Table = QuantSimd.BuildTernaryTable(tail, PlaneBytes * 2);
+                }
             }
             else
             {
@@ -220,28 +224,27 @@ namespace Hyperspace
                 headNormSq += h * h;
             }
 
+            // Two lookups per byte of the planes (four dimensions each) replace the per-dimension loop.
             double tailDot = 0;
             int nzCount = 0;
-            for (int b = 0; b < PlaneBytes; b++)
+            if (PlaneBytes > 0)
             {
-                byte nz = stored[nzOffset + b];
-                if (nz == 0)
+                var table = query.Table!;
+                float acc = 0;
+                for (int b = 0; b < PlaneBytes; b++)
                 {
-                    continue;
+                    byte nz = stored[nzOffset + b];
+                    if (nz == 0)
+                    {
+                        continue;
+                    }
+
+                    byte sign = stored[signOffset + b];
+                    nzCount += BitOperations.PopCount(nz);
+                    acc += table[((2 * b) << 8) + ((nz & 15) << 4) + (sign & 15)] + table[(((2 * b) + 1) << 8) + ((nz >> 4) << 4) + (sign >> 4)];
                 }
 
-                nzCount += BitOperations.PopCount(nz);
-                byte sign = stored[signOffset + b];
-                int baseIdx = b * 8;
-                int limit = Math.Min(8, TailDim - baseIdx);
-                for (int bit = 0; bit < limit; bit++)
-                {
-                    int mask = 1 << bit;
-                    if ((nz & mask) != 0)
-                    {
-                        tailDot += (sign & mask) != 0 ? rotated[baseIdx + bit] : -rotated[baseIdx + bit];
-                    }
-                }
+                tailDot = acc;
             }
 
             double vTailNormSq = nzCount * scale * scale;
