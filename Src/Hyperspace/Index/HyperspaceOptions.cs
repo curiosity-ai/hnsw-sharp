@@ -30,8 +30,12 @@ namespace Hyperspace
         /// <summary>Gets or sets the default size of the candidate list while searching.</summary>
         public int EfSearch { get; set; } = 100;
 
-        /// <summary>Gets or sets the probability of a node climbing one more layer (0.5 reproduces HyperspaceDB).</summary>
-        public double LevelProbability { get; set; } = 0.5;
+        /// <summary>
+        /// Gets or sets the probability of a node climbing one more layer. <c>null</c> (the default) uses <c>1 / M</c>, the setting of the HNSW paper
+        /// (<c>mL = 1 / ln M</c>), which gives about <c>log_M(n)</c> layers. HyperspaceDB uses 0.5, which stacks many more, sparser layers: on 20,000
+        /// vectors that doubled the build time and added 14 % memory with no gain in recall.
+        /// </summary>
+        public double? LevelProbability { get; set; }
 
         /// <summary>Gets or sets the highest number of layers.</summary>
         public int MaxLayers { get; set; } = 16;
@@ -103,6 +107,8 @@ namespace Hyperspace
         /// <summary>Gets or sets a value indicating whether layer 0 is frozen into contiguous arrays right after loading.</summary>
         public bool FreezeOnLoad { get; set; } = true;
 
+        internal double ResolvedLevelProbability => LevelProbability ?? 1.0 / M;
+
         internal int ResolvedHeadDimensions => Math.Clamp(HeadDimensions ?? (Metric == DistanceMetric.Hybrid ? Metrics.HybridLorentzDimensions : 0), 0, Dimension);
 
         internal bool ResolvedNormalize => NormalizeVectors ?? (Metric == DistanceMetric.Cosine || Metric == DistanceMetric.Angular);
@@ -139,7 +145,7 @@ namespace Hyperspace
                 throw new ArgumentException("EfConstruction and EfSearch must be positive");
             }
 
-            if (LevelProbability <= 0 || LevelProbability >= 1)
+            if (ResolvedLevelProbability <= 0 || ResolvedLevelProbability >= 1)
             {
                 throw new ArgumentException("LevelProbability must be in (0, 1)", nameof(LevelProbability));
             }

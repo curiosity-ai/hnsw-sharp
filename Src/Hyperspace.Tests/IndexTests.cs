@@ -333,6 +333,20 @@ namespace Hyperspace.Tests
         }
 
         [TestMethod]
+        public void LayersFollowTheLevelProbability()
+        {
+            var data = TestData.Clustered(5000, 16, 21);
+            var standard = TestData.Build(data, new HyperspaceOptions { Dimension = 16, M = 16, Seed = 1 });
+            var deep = TestData.Build(data, new HyperspaceOptions { Dimension = 16, M = 16, Seed = 1, LevelProbability = 0.5 });
+
+            // log_16(5000) is about 3: the default grows a shallow hierarchy, p = 0.5 a much deeper one.
+            Assert.IsTrue(standard.LayerCount <= 7, $"default: {standard.LayerCount} layers");
+            Assert.IsTrue(deep.LayerCount >= 9, $"p = 0.5: {deep.LayerCount} layers");
+            Assert.AreEqual(1.0 / 16, standard.Options.ResolvedLevelProbability, 1e-12);
+            Assert.ThrowsExactly<ArgumentException>(() => new HyperspaceIndex(new HyperspaceOptions { Dimension = 4, LevelProbability = 1.0 }));
+        }
+
+        [TestMethod]
         public void SeededBuildsAreReproducible()
         {
             var data = TestData.Clustered(300, 16, 8);

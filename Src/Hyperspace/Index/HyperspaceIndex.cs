@@ -364,7 +364,7 @@ namespace Hyperspace
             lock (_randomLock)
             {
                 int level = 0;
-                while (_random.NextDouble() < _options.LevelProbability && level < _options.MaxLayers - 1)
+                while (_random.NextDouble() < _options.ResolvedLevelProbability && level < _options.MaxLayers - 1)
                 {
                     level++;
                 }

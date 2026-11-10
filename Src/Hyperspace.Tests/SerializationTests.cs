@@ -306,7 +306,7 @@ namespace Hyperspace.Tests
             Assert.AreEqual(55, copy.EfConstruction);
             Assert.AreEqual(66, copy.EfSearch);
             Assert.AreEqual(7, copy.MaxLayers);
-            Assert.AreEqual(0.25, copy.LevelProbability);
+            Assert.AreEqual(0.25, copy.LevelProbability!.Value);
             Assert.IsTrue(copy.DensityPruning);
             Assert.IsFalse(copy.AnisotropicRefinement);
             Assert.AreEqual(0.5f, copy.TernaryThreshold);

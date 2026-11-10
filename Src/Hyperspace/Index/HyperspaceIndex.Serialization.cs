@@ -230,7 +230,7 @@ namespace Hyperspace
             w.WriteInt32(o.EfSearch);
             w.WriteInt32(o.MaxLayers);
             w.WriteInt32(o.ResolvedHeadDimensions);
-            w.WriteSingle((float)o.LevelProbability);
+            w.WriteSingle((float)o.ResolvedLevelProbability);
             w.WriteSingle(o.TernaryThreshold);
             int flags = (o.FastRouting ? 1 : 0) | (o.DensityPruning ? 2 : 0) | (o.ResolvedNormalize ? 4 : 0) | (o.AnisotropicRefinement ? 8 : 0) | (o.ValidateVectors ? 16 : 0) | (o.KeepOriginalVectors ? 32 : 0);
             w.WriteInt32(flags);

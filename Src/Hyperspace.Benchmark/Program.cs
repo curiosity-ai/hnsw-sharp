@@ -137,8 +137,7 @@ foreach (var (label, heuristic) in new[] { ("HNSW.Net (SelectSimple)", Neighbour
 var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool Pq, int Rerank)>
 {
     ("Hyperspace Float32", o => o.Quantization = QuantizationMode.Float32, false, 1),
-    ("Hyperspace Float32 (level p=1/8)", o => { o.Quantization = QuantizationMode.Float32; o.LevelProbability = 1.0 / 8; }, false, 1),
-    ("Hyperspace Float32 (level p=1/16 = 1/M)", o => { o.Quantization = QuantizationMode.Float32; o.LevelProbability = 1.0 / 16; }, false, 1),
+    ("Hyperspace Float32 (level p=0.5, as HyperspaceDB)", o => { o.Quantization = QuantizationMode.Float32; o.LevelProbability = 0.5; }, false, 1),
     ("Hyperspace Float64 (default)", o => o.Quantization = QuantizationMode.None, false, 1),
     ("Hyperspace Int8", o => o.Quantization = QuantizationMode.ScalarInt8, false, 1),
     ("Hyperspace Int4", o => o.Quantization = QuantizationMode.ScalarInt4, false, 1),
