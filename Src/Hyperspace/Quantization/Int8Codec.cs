@@ -10,7 +10,8 @@ namespace Hyperspace
     using System.Runtime.InteropServices;
 
     /// <summary>
-    /// Scalar 8-bit quantization. Layout: <c>sbyte[dim] | float scale | float alpha</c>.
+    /// Scalar 8-bit quantization. Layout: <c>sbyte[dim] | float scale | float alpha | int sumOfSquares</c>, the last being the sum of the squared codes,
+    /// kept so two codes can be compared with one integer dot product instead of being decoded.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -32,11 +33,16 @@ namespace Hyperspace
         public Int8Codec(int dimension, DistanceMetric metric, bool anisotropic)
             : base(dimension, metric)
         {
+            if (dimension > 130_000)
+            {
+                throw new ArgumentException("8-bit storage keeps the sum of squared codes in 32 bits, which limits the dimension to 130,000", nameof(dimension));
+            }
+
             _fixedScale = metric == DistanceMetric.Poincare;
             _anisotropic = anisotropic;
         }
 
-        public override int EncodedLength => Dimension + 8;
+        public override int EncodedLength => Dimension + 12;
 
         public override bool SupportsTruncation => true;
 
@@ -71,6 +77,7 @@ namespace Hyperspace
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(n, 4), (float)scale);
             double alpha = _fixedScale ? Metrics.ConformalAlpha(vector) : 1.0;
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(n + 4, 4), (float)alpha);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(n + 8, 4), QuantSimd.DotInt8Int8(q, q));
             return bytes;
         }
 
@@ -135,6 +142,30 @@ namespace Hyperspace
                 dotErrX = bestDot;
                 sqErr = bestSq;
             }
+        }
+
+        /// <summary>
+        /// Squared L2 (or 1 - dot) between two codes without decoding them: <c>|a - b|^2 = sa^2 |a|^2 + sb^2 |b|^2 - 2 sa sb (a.b)</c> with the stored sums of squares and
+        /// one integer dot product. The other metrics decode.
+        /// </summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            if (Metric is not (DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot))
+            {
+                return base.PairDistance(a, b);
+            }
+
+            double sa = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(Dimension, 4)) / 127.0;
+            double sb = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(Dimension, 4)) / 127.0;
+            int dot = QuantSimd.DotInt8Int8(MemoryMarshal.Cast<byte, sbyte>(a.Slice(0, Dimension)), MemoryMarshal.Cast<byte, sbyte>(b.Slice(0, Dimension)));
+            if (Metric == DistanceMetric.Dot)
+            {
+                return 1.0 - (sa * sb * dot);
+            }
+
+            double normA = BinaryPrimitives.ReadInt32LittleEndian(a.Slice(Dimension + 8, 4));
+            double normB = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(Dimension + 8, 4));
+            return Math.Max((sa * sa * normA) + (sb * sb * normB) - (2.0 * sa * sb * dot), 0.0);
         }
 
         public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination)

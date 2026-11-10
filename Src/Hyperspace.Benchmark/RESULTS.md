@@ -148,7 +148,7 @@ Graph construction compares stored vectors with each other, and for the quantize
 | mode | query to vector | vector to vector, before | vector to vector, now |
 |---|---:|---:|---:|
 | Float32 | 29 | 23 | 23 |
-| Int8 | 37 | 44 | 44 (unchanged) |
+| Int8 | 37 | 44 | 25 |
 | 4-bit | 78 (was 125) | 419 | 104 |
 | TurboQuant | 47 | 549 | 133 |
 | Ternary | 76 | 1,362 | 17 |
@@ -157,7 +157,7 @@ Graph construction compares stored vectors with each other, and for the quantize
 
 The new kernels compare the codes directly (popcount of the XOR for binary, popcounts of the bit planes for ternary, table lookups per nibble pair for TurboQuant and 4-bit, a
 symmetric centroid table for PQ) and are exact: recall was bit-identical before and after on every row. Build times (20,000 x 128): binary 7.5 s to 1.6 s, 4-bit 7.0 s to 3.6 s,
-TurboQuant 6.9 s to 3.8 s. The PQ symmetric table costs 256 KiB per sub-vector, so it is dropped when the index is frozen (it added 2 MiB to the 20,000-vector PQ index until then).
+TurboQuant 6.9 s to 3.8 s, 8-bit 2.1 s to 1.8 s (its pair comparison, one integer dot product of the codes plus a stored sum of squares, went from 44 to 25 ns at 128 dimensions and from 200 to 135 ns at 768; it was never the main cost of an 8-bit build). The PQ symmetric table costs 256 KiB per sub-vector, so it is dropped when the index is frozen (it added 2 MiB to the 20,000-vector PQ index until then).
 
 Two findings from the recall work:
 

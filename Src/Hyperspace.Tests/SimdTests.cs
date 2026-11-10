@@ -39,6 +39,26 @@ namespace Hyperspace.Tests
         }
 
         [TestMethod]
+        public void IntegerDotOfInt8CodesIsExact()
+        {
+            var r = new Random(4);
+            for (int n = 0; n <= 300; n++)
+            {
+                var a = Enumerable.Range(0, n).Select(_ => (sbyte)r.Next(-127, 128)).ToArray();
+                var b = Enumerable.Range(0, n).Select(_ => (sbyte)r.Next(-127, 128)).ToArray();
+                int expected = 0;
+                for (int i = 0; i < n; i++) expected += a[i] * b[i];
+                Assert.AreEqual(expected, QuantSimd.DotInt8Int8(a, b), $"n={n}");
+            }
+
+            // The extremes: every product is the largest possible, +-16,129.
+            var high = Enumerable.Repeat((sbyte)127, 4096).ToArray();
+            var low = Enumerable.Repeat((sbyte)-127, 4096).ToArray();
+            Assert.AreEqual(4096 * 16129, QuantSimd.DotInt8Int8(high, high));
+            Assert.AreEqual(-4096 * 16129, QuantSimd.DotInt8Int8(high, low));
+        }
+
+        [TestMethod]
         public void LookupTablesAreTheSumsTheyClaimToBe()
         {
             var r = new Random(2);
@@ -125,6 +145,9 @@ namespace Hyperspace.Tests
 
         [TestMethod]
         [DataRow(QuantizationMode.ScalarInt8, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.ScalarInt8, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.ScalarInt8, DistanceMetric.Dot)]
+        [DataRow(QuantizationMode.ScalarInt8, DistanceMetric.Poincare)]
         [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.L2)]
         [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.Cosine)]
         [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.Dot)]

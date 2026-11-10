@@ -44,7 +44,7 @@ namespace Hyperspace.Tests
             int Bytes(QuantizationMode m, int dim = 768, DistanceMetric metric = DistanceMetric.L2) => new HyperspaceIndex(Options(m, metric, dim)).BytesPerVector;
             Assert.AreEqual(768 * 8, Bytes(QuantizationMode.None));
             Assert.AreEqual(768 * 4, Bytes(QuantizationMode.Float32));
-            Assert.AreEqual(768 + 8, Bytes(QuantizationMode.ScalarInt8));
+            Assert.AreEqual(768 + 12, Bytes(QuantizationMode.ScalarInt8));   // + scale, alpha and the sum of squared codes
             Assert.AreEqual((768 / 8) + 4, Bytes(QuantizationMode.Binary));
             Assert.AreEqual(4 + (768 / 16 * 4) + (768 / 16 * 8) + 4, Bytes(QuantizationMode.ScalarInt4));   // + the stored tail norm
             Assert.AreEqual(8 + (768 / 2), Bytes(QuantizationMode.Turbo));

@@ -52,6 +52,43 @@ namespace Hyperspace
             return sum;
         }
 
+        /// <summary>
+        /// The integer dot product of two 8-bit code vectors, exact. Codes are within +-127, so a product (at most 16,129) fits in 16 bits and the
+        /// multiplication stays in <see cref="short"/> lanes; only the accumulation widens to 32 bits.
+        /// </summary>
+        public static int DotInt8Int8(ReadOnlySpan<sbyte> a, ReadOnlySpan<sbyte> b)
+        {
+            int n = Math.Min(a.Length, b.Length);
+            int i = 0;
+            int sum = 0;
+            if (Vector.IsHardwareAccelerated && n >= Vector<sbyte>.Count)
+            {
+                var acc0 = Vector<int>.Zero;
+                var acc1 = Vector<int>.Zero;
+                ref sbyte ra = ref MemoryMarshal.GetReference(a);
+                ref sbyte rb = ref MemoryMarshal.GetReference(b);
+                int last = n - Vector<sbyte>.Count;
+                for (; i <= last; i += Vector<sbyte>.Count)
+                {
+                    Vector.Widen(Vector.LoadUnsafe(ref ra, (nuint)i), out Vector<short> a0, out Vector<short> a1);
+                    Vector.Widen(Vector.LoadUnsafe(ref rb, (nuint)i), out Vector<short> b0, out Vector<short> b1);
+                    Vector.Widen(a0 * b0, out Vector<int> p0, out Vector<int> p1);
+                    Vector.Widen(a1 * b1, out Vector<int> p2, out Vector<int> p3);
+                    acc0 += p0 + p1;
+                    acc1 += p2 + p3;
+                }
+
+                sum = Vector.Sum(acc0 + acc1);
+            }
+
+            for (; i < n; i++)
+            {
+                sum += a[i] * b[i];
+            }
+
+            return sum;
+        }
+
         /// <summary>The sum of <c>(codes[i] * step - query[i])^2</c>.</summary>
         public static float L2Int8(ReadOnlySpan<sbyte> codes, ReadOnlySpan<float> query, float step)
         {

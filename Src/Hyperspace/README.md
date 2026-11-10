@@ -58,7 +58,7 @@ codes tracks the true distance (Spearman rank correlation on unit-norm Gaussian 
 | --- | ---: | ---: | ---: | --- |
 | `None` | 8192 | 0.5x | 1.00 | float64, the default; exact hyperbolic distances near the ball boundary |
 | `Float32` | 4096 | 1x | 1.00 | |
-| `ScalarInt8` | 1032 | 4x | 1.00 | per-vector scale; fixed scale and optional anisotropic refinement for Poincare |
+| `ScalarInt8` | 1036 | 4x | 1.00 | per-vector scale; fixed scale and optional anisotropic refinement for Poincare |
 | `ScalarInt4` | 776 | 5.3x | 0.99 | 4 bits in blocks of 16 with a block scale |
 | `Turbo` | 520 | 7.9x | 0.99 | TurboQuant: rotation + norm + 4-bit Lloyd-Max centroids |
 | `Ternary` | 264 | 15.5x | 0.90 | BitNet `{-1, 0, +1}`, 1.58 bits, popcount-friendly bit planes |
