@@ -26,6 +26,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hyperspace", "Hyperspace\Hy
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hyperspace.Tests", "Hyperspace.Tests\Hyperspace.Tests.csproj", "{3AA4DE64-E609-42B9-A12E-0F8CC1CB78AB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hyperspace.Benchmark", "Hyperspace.Benchmark\Hyperspace.Benchmark.csproj", "{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -144,6 +146,18 @@ Global
 		{3AA4DE64-E609-42B9-A12E-0F8CC1CB78AB}.Release|x64.Build.0 = Release|Any CPU
 		{3AA4DE64-E609-42B9-A12E-0F8CC1CB78AB}.Release|x86.ActiveCfg = Release|Any CPU
 		{3AA4DE64-E609-42B9-A12E-0F8CC1CB78AB}.Release|x86.Build.0 = Release|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Debug|x64.Build.0 = Debug|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Debug|x86.Build.0 = Debug|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Release|x64.ActiveCfg = Release|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Release|x64.Build.0 = Release|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Release|x86.ActiveCfg = Release|Any CPU
+		{C06D169C-6AC5-4A8E-9DD1-7EC1E53AE79D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -4,7 +4,15 @@ variables:
   targetVersion: yy.M.$(build.buildId)
 
 trigger:
-- master
+  branches:
+    include:
+    - master
+  paths:
+    exclude:
+    - Src/Hyperspace/*
+    - Src/Hyperspace.Tests/*
+    - Src/Hyperspace.Benchmark/*
+    - .devops/build-nuget-hyperspace.yml
 
 pool:
   vmImage: 'windows-latest'

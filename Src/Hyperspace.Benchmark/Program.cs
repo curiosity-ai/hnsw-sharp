@@ -1,0 +1,170 @@
+// Compares Hyperspace with the HNSW package on identical data: build time, recall@10, queries per second and memory.
+//
+//   dotnet run -c Release --project Src/Hyperspace.Benchmark -- [--n 20000] [--dim 128] [--queries 500] [--only name,name] [--out results.md]
+//
+// The data is synthetic (unit-norm Gaussian clusters), so absolute numbers say little about your embeddings; the comparison between rows is the point.
+using System.Diagnostics;
+using System.Runtime;
+using System.Text;
+using HNSW.Net;
+using Hyperspace;
+
+int n = 20000, dim = 128, nq = 500, k = 10;
+string? only = null, outPath = null;
+for (int i = 0; i < args.Length - 1; i++)
+{
+    switch (args[i])
+    {
+        case "--n": n = int.Parse(args[i + 1]); break;
+        case "--dim": dim = int.Parse(args[i + 1]); break;
+        case "--queries": nq = int.Parse(args[i + 1]); break;
+        case "--only": only = args[i + 1]; break;
+        case "--out": outPath = args[i + 1]; break;
+    }
+}
+
+const int M = 16, EfConstruction = 100;
+int[] efs = { 16, 32, 64, 128, 256 };
+int threads = Environment.ProcessorCount;
+
+Console.WriteLine($"n={n} dim={dim} queries={nq} k={k} M={M} efConstruction={EfConstruction} threads={threads} {System.Runtime.InteropServices.RuntimeInformation.OSDescription} {Environment.Version}");
+
+// ---- data: unit vectors drawn around 100 cluster centres, queries from the same distribution
+float[][] Generate(int count, int seed, float[][] centres, double noise)
+{
+    var r = new Random(seed);
+    var data = new float[count][];
+    for (int i = 0; i < count; i++)
+    {
+        var c = centres[r.Next(centres.Length)];
+        var v = new float[dim];
+        for (int d = 0; d < dim; d++) v[d] = c[d] + (float)(Gauss(r) * noise);
+        Normalize(v);
+        data[i] = v;
+    }
+    return data;
+}
+static double Gauss(Random r) => Math.Sqrt(-2 * Math.Log(1 - r.NextDouble())) * Math.Cos(2 * Math.PI * r.NextDouble());
+static void Normalize(float[] v) { double s = 0; foreach (var x in v) s += (double)x * x; float inv = (float)(1 / Math.Sqrt(s)); for (int i = 0; i < v.Length; i++) v[i] *= inv; }
+
+var rc = new Random(1);
+var centres = Enumerable.Range(0, 100).Select(_ => { var c = new float[dim]; for (int d = 0; d < dim; d++) c[d] = (float)Gauss(rc); Normalize(c); return c; }).ToArray();
+double noise = 0.5 / Math.Sqrt(dim) * 1.6;
+var data = Generate(n, 2, centres, noise);
+var queries = Generate(nq, 3, centres, noise);
+
+// ---- exact ground truth by brute force (cosine on unit vectors = max dot product)
+var truth = new int[nq][];
+Parallel.For(0, nq, qi =>
+{
+    var q = queries[qi];
+    var best = new PriorityQueue<int, float>();
+    for (int i = 0; i < n; i++)
+    {
+        float dot = 0; var v = data[i]; for (int d = 0; d < dim; d++) dot += q[d] * v[d];
+        if (best.Count < k) best.Enqueue(i, dot); else if (best.TryPeek(out _, out var w) && dot > w) { best.Dequeue(); best.Enqueue(i, dot); }
+    }
+    var ids = new int[k]; int p = k; while (best.TryDequeue(out var id, out _)) ids[--p] = id; truth[qi] = ids;
+});
+
+double Recall(Func<float[], int[]> search)
+{
+    int hit = 0;
+    for (int qi = 0; qi < nq; qi++) { var t = new HashSet<int>(truth[qi]); foreach (var id in search(queries[qi])) if (t.Contains(id)) hit++; }
+    return hit / (double)(nq * k);
+}
+
+long Heap()
+{
+    GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+    GC.WaitForPendingFinalizers();
+    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+    return GC.GetTotalMemory(true);
+}
+
+var table = new StringBuilder();
+table.AppendLine($"n={n}, dim={dim}, {nq} queries, k={k}, M={M}, efConstruction={EfConstruction}, {threads} cores. Raw vectors: {n * (long)dim * 4 / 1048576.0:F1} MiB.\n");
+table.AppendLine("| Index | Build | Heap | B/vec | ef | Recall@10 | QPS 1 thread | QPS " + threads + " threads |");
+table.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|");
+
+void Report(string name, double buildSeconds, long heapDelta, long extraVectors, Func<int, Func<float[], int[]>> searcherForEf)
+{
+    long footprint = heapDelta + extraVectors;
+    bool first = true;
+    foreach (int ef in efs)
+    {
+        var search = searcherForEf(ef);
+        for (int w = 0; w < Math.Min(nq, 200); w++) search(queries[w]);                // warm-up
+        double recall = Recall(search);
+        var sw = Stopwatch.StartNew();
+        int rounds = 0;
+        do { for (int qi = 0; qi < nq; qi++) search(queries[qi]); rounds++; } while (sw.Elapsed.TotalSeconds < 1.5);
+        double qps1 = rounds * nq / sw.Elapsed.TotalSeconds;
+        sw.Restart(); rounds = 0;
+        do { Parallel.For(0, nq, new ParallelOptions { MaxDegreeOfParallelism = threads }, qi => search(queries[qi])); rounds++; } while (sw.Elapsed.TotalSeconds < 1.5);
+        double qpsN = rounds * nq / sw.Elapsed.TotalSeconds;
+        var line = $"| {(first ? name : "")} | {(first ? $"{buildSeconds:F1} s" : "")} | {(first ? $"{footprint / 1048576.0:F1} MiB" : "")} | {(first ? $"{footprint / (double)n:F0}" : "")} | {ef} | {recall:F4} | {qps1:N0} | {qpsN:N0} |";
+        Console.WriteLine(line); table.AppendLine(line); first = false;
+    }
+}
+
+bool Wanted(string name) => only is null || only.Split(',').Any(o => name.Contains(o, StringComparison.OrdinalIgnoreCase));
+
+// ---- HNSW package (items are held by reference, so the heap delta excludes the vectors: add them for a fair footprint)
+foreach (var (label, heuristic) in new[] { ("HNSW.Net (SelectSimple)", NeighbourSelectionHeuristic.SelectSimple), ("HNSW.Net (SelectHeuristic)", NeighbourSelectionHeuristic.SelectHeuristic) })
+{
+    if (!Wanted(label)) continue;
+    long before = Heap();
+    var sw = Stopwatch.StartNew();
+    var parameters = new SmallWorldParameters { M = M, LevelLambda = 1 / Math.Log(M), ConstructionPruning = EfConstruction, EfSearch = 50, NeighbourHeuristic = heuristic };
+    var graph = new SmallWorld<float[], float>(CosineDistance.SIMDForUnits, DefaultRandomGenerator.Instance, parameters);
+    graph.AddItems(data);
+    graph.OptimizeIfNeeded();
+    graph.DisableDistanceCache();   // frees the construction-time cache so the heap figure is the steady state
+    double build = sw.Elapsed.TotalSeconds;
+    long after = Heap();
+    Report(label, build, after - before, (long)n * dim * 4, ef => { graph.Parameters.EfSearch = ef; return q => graph.KNNSearch(q, k).Select(r => r.Id).ToArray(); });
+    GC.KeepAlive(graph);
+}
+
+// ---- Hyperspace configurations (they store their own copy of the vectors, so the heap delta is the whole footprint)
+var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool Pq, int Rerank)>
+{
+    ("Hyperspace Float32", o => o.Quantization = QuantizationMode.Float32, false, 1),
+    ("Hyperspace Float64 (default)", o => o.Quantization = QuantizationMode.None, false, 1),
+    ("Hyperspace Int8", o => o.Quantization = QuantizationMode.ScalarInt8, false, 1),
+    ("Hyperspace Int4", o => o.Quantization = QuantizationMode.ScalarInt4, false, 1),
+    ("Hyperspace Turbo", o => o.Quantization = QuantizationMode.Turbo, false, 1),
+    ("Hyperspace Ternary", o => o.Quantization = QuantizationMode.Ternary, false, 1),
+    ("Hyperspace Ternary + rerank x4", o => { o.Quantization = QuantizationMode.Ternary; o.KeepOriginalVectors = true; }, false, 4),
+    ("Hyperspace Binary", o => o.Quantization = QuantizationMode.Binary, false, 1),
+    ("Hyperspace Binary + rerank x4", o => { o.Quantization = QuantizationMode.Binary; o.KeepOriginalVectors = true; }, false, 4),
+    ("Hyperspace PQ", o => o.Quantization = QuantizationMode.ProductQuantization, true, 1),
+    ("Hyperspace PQ + rerank x4", o => { o.Quantization = QuantizationMode.ProductQuantization; o.KeepOriginalVectors = true; }, true, 4),
+    ("Hyperspace OPQ", o => o.Quantization = QuantizationMode.OPQ, true, 1),
+    ("Hyperspace Int8 + rerank x4", o => { o.Quantization = QuantizationMode.ScalarInt8; o.KeepOriginalVectors = true; }, false, 4),
+};
+
+foreach (var (name, configure, pq, rerank) in configs)
+{
+    if (!Wanted(name)) continue;
+    long before = Heap();
+    var sw = Stopwatch.StartNew();
+    var options = new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, M = M, EfConstruction = EfConstruction, EfSearch = 50, Seed = 1, ValidateVectors = false };
+    configure(options);
+    var index = new HyperspaceIndex(options);
+    if (pq) index.TrainProductQuantizer(data.Take(Math.Min(n, 20000)).ToArray(), 8);
+    index.AddRange(data);
+    index.FreezeFlatLayer0();
+    double build = sw.Elapsed.TotalSeconds;
+    long after = Heap();
+    Report(name, build, after - before, 0, ef =>
+    {
+        var so = new SearchOptions { Ef = ef, RerankOversample = rerank };
+        return q => { var hits = index.Search(q, k, so); var ids = new int[hits.Length]; for (int i = 0; i < ids.Length; i++) ids[i] = hits[i].Id; return ids; };
+    });
+    GC.KeepAlive(index);
+}
+
+if (outPath is not null) File.WriteAllText(outPath, table.ToString());
