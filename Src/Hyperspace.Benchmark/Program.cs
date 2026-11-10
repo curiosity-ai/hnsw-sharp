@@ -151,6 +151,10 @@ var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool P
     ("Hyperspace PQ", o => o.Quantization = QuantizationMode.ProductQuantization, true, 1),
     ("Hyperspace PQ + rerank", o => { o.Quantization = QuantizationMode.ProductQuantization; o.KeepOriginalVectors = true; }, true, null),
     ("Hyperspace OPQ", o => o.Quantization = QuantizationMode.OPQ, true, 1),
+    ("Hyperspace PQ m=32", o => { o.Quantization = QuantizationMode.ProductQuantization; o.ProductQuantizer = new ProductQuantizer(128, 32, false); }, true, 1),
+    ("Hyperspace PQ m=16", o => { o.Quantization = QuantizationMode.ProductQuantization; o.ProductQuantizer = new ProductQuantizer(128, 16, false); }, true, 1),
+    ("Hyperspace PQ m=64", o => { o.Quantization = QuantizationMode.ProductQuantization; o.ProductQuantizer = new ProductQuantizer(128, 64, false); }, true, 1),
+    ("Hyperspace PQ m=32 + rerank", o => { o.Quantization = QuantizationMode.ProductQuantization; o.ProductQuantizer = new ProductQuantizer(128, 32, false); o.KeepOriginalVectors = true; }, true, null),
     ("Hyperspace Int8 + rerank", o => { o.Quantization = QuantizationMode.ScalarInt8; o.KeepOriginalVectors = true; }, false, null),
 };
 

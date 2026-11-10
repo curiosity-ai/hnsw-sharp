@@ -63,7 +63,7 @@ codes tracks the true distance (Spearman rank correlation on unit-norm Gaussian 
 | `Turbo` | 520 | 7.9x | 0.99 | TurboQuant: rotation + norm + 4-bit Lloyd-Max centroids |
 | `Ternary` | 264 | 15.5x | 0.90 | BitNet `{-1, 0, +1}`, 1.58 bits, popcount-friendly bit planes |
 | `Binary` | 132 | 31x | 0.79 | sign bits of the rotated vector, asymmetric search |
-| `ProductQuantization` / `OPQ` | 64 | 64x | 0.5-0.65 | one byte per 16 dimensions, asymmetric lookup tables, squared L2 |
+| `ProductQuantization` / `OPQ` | 256 | 16x | 0.6 (1.00 with re-ranking) | one byte per 4 dimensions by default (trade recall for size with `ProductQuantizer(dim, subvectors)`), asymmetric lookup tables, squared L2 |
 | `AsymmetricHybrid` | | | | float32 head (e.g. the 33 Lorentz dimensions) + 8-bit tail |
 
 The aggressive codecs (`Ternary`, `Binary`, `PQ`) rank neighbours coarsely, so on their own they find only part of the true ones. Keep the original vectors and re-rank for

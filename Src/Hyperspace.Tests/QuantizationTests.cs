@@ -49,8 +49,8 @@ namespace Hyperspace.Tests
             Assert.AreEqual(4 + (768 / 16 * 4) + (768 / 16 * 8) + 4, Bytes(QuantizationMode.ScalarInt4));   // + the stored tail norm
             Assert.AreEqual(8 + (768 / 2), Bytes(QuantizationMode.Turbo));
             Assert.AreEqual((2 * 96) + 8, Bytes(QuantizationMode.Ternary));
-            Assert.AreEqual(768 / 16, Bytes(QuantizationMode.ProductQuantization));
-            Assert.AreEqual(768 / 16, Bytes(QuantizationMode.OPQ));
+            Assert.AreEqual(768 / 4, Bytes(QuantizationMode.ProductQuantization));
+            Assert.AreEqual(768 / 4, Bytes(QuantizationMode.OPQ));
         }
 
         [TestMethod]
@@ -228,10 +228,11 @@ namespace Hyperspace.Tests
         [TestMethod]
         public void DefaultSubvectorCount()
         {
-            Assert.AreEqual(48, ProductQuantizer.DefaultSubvectorCount(768));
-            Assert.AreEqual(1, ProductQuantizer.DefaultSubvectorCount(16));
-            Assert.AreEqual(3, ProductQuantizer.DefaultSubvectorCount(24));
+            Assert.AreEqual(192, ProductQuantizer.DefaultSubvectorCount(768));
+            Assert.AreEqual(4, ProductQuantizer.DefaultSubvectorCount(16));
+            Assert.AreEqual(6, ProductQuantizer.DefaultSubvectorCount(24));
             Assert.AreEqual(7, ProductQuantizer.DefaultSubvectorCount(28));
+            Assert.AreEqual(5, ProductQuantizer.DefaultSubvectorCount(10));
             Assert.AreEqual(13, ProductQuantizer.DefaultSubvectorCount(13));
         }
     }

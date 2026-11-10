@@ -185,3 +185,16 @@ pure noise. What follows was measured by **interleaving the variants in one proc
   profiled; there is no sampling profiler on this machine.
 * Ternary and product-quantization recall dropped a little (0.41 to 0.37, 0.064 to 0.055 at ef 64) when the level default changed: their graphs are built from
   noisy distances and vary with the level draw; HNSW's `SelectSimple` moved 0.514 to 0.527 between runs of unchanged code, so differences of this size are not conclusive.
+
+## Product quantization: sub-vector count
+
+The default was one byte per 16 dimensions (8 sub-vectors at 128 dimensions), which loses almost all of the ranking. It is now one byte per 4 dimensions. 20,000 x 128, cosine, M=16, efConstruction=100, recall@10, single-threaded QPS at ef 16 / ef 256:
+
+| Sub-vectors | Bytes per vector | Build | Recall at ef 256 | Recall with re-ranking | QPS (ef 16 / 256) |
+|---|---|---|---|---|---|
+| 8 (old default) | 8 | 3.9 s | 0.0954 | 0.3124 | 27,376 / 9,851 |
+| 16 | 16 | 4.1 s | 0.3218 | not measured | 24,765 / 9,874 |
+| 32 (new default) | 32 | 5.4 s | 0.5696 | 1.0000 | 16,186 / 6,818 |
+| 64 | 64 | 8.7 s | 0.8508 | not measured | 13,849 / 4,581 |
+
+Re-ranking 32-sub-vector codes against the kept originals reaches recall 1.0000 at every ef, at 15.6 MiB (the codes plus the originals). Without originals, PQ stays the lossy option; pass a `ProductQuantizer` with more sub-vectors when recall matters more than size.

@@ -81,7 +81,10 @@ namespace Hyperspace
         /// <summary>Gets a value indicating whether vectors are rotated before quantization.</summary>
         public bool IsOpq { get; }
 
-        /// <summary>The default number of sub-vectors for a dimension, targeting sub-vectors of 16 dimensions.</summary>
+        /// <summary>
+/// The default number of sub-vectors for a dimension, targeting sub-vectors of 4 dimensions (16x compression). Coarser sub-vectors compress more but recall collapses
+/// (128 dimensions, 20,000 vectors: 8 sub-vectors 0.10, 16 sub-vectors 0.32, 32 sub-vectors 0.57, 64 sub-vectors 0.85, each at ef 256).
+/// </summary>
         public static int DefaultSubvectorCount(int dimension)
         {
             if (dimension <= 0)
@@ -89,17 +92,12 @@ namespace Hyperspace
                 return 1;
             }
 
-            if (dimension % 16 == 0)
+            if (dimension % 4 == 0)
             {
-                return dimension / 16;
+                return dimension / 4;
             }
 
-            if (dimension % 8 == 0)
-            {
-                return dimension / 8;
-            }
-
-            return dimension % 4 == 0 ? dimension / 4 : dimension;
+            return dimension % 2 == 0 ? dimension / 2 : dimension;
         }
 
         private Span<float> Centroid(int sub, int k) => _centroids.AsSpan((((sub * 256) + k) * SubvectorDimension), SubvectorDimension);
