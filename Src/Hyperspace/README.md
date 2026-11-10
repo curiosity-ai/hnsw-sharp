@@ -59,20 +59,22 @@ codes tracks the true distance (Spearman rank correlation on unit-norm Gaussian 
 | `None` | 8192 | 0.5x | 1.00 | float64, the default; exact hyperbolic distances near the ball boundary |
 | `Float32` | 4096 | 1x | 1.00 | |
 | `ScalarInt8` | 1032 | 4x | 1.00 | per-vector scale; fixed scale and optional anisotropic refinement for Poincare |
-| `ScalarInt4` | 772 | 5.3x | 0.99 | 4 bits in blocks of 16 with a block scale |
+| `ScalarInt4` | 776 | 5.3x | 0.99 | 4 bits in blocks of 16 with a block scale |
 | `Turbo` | 520 | 7.9x | 0.99 | TurboQuant: rotation + norm + 4-bit Lloyd-Max centroids |
 | `Ternary` | 264 | 15.5x | 0.90 | BitNet `{-1, 0, +1}`, 1.58 bits, popcount-friendly bit planes |
 | `Binary` | 132 | 31x | 0.79 | sign bits of the rotated vector, asymmetric search |
 | `ProductQuantization` / `OPQ` | 64 | 64x | 0.5-0.65 | one byte per 16 dimensions, asymmetric lookup tables, squared L2 |
 | `AsymmetricHybrid` | | | | float32 head (e.g. the 33 Lorentz dimensions) + 8-bit tail |
 
-The aggressive codecs (`Ternary`, `Binary`, `PQ`) have low single-pass recall by design. Keep the original vectors and re-rank for
-near-exact results (HyperspaceDB calls this *two-pass search*):
+The aggressive codecs (`Ternary`, `Binary`, `PQ`) rank neighbours coarsely, so on their own they find only part of the true ones. Keep the original vectors and re-rank for
+near-exact results (HyperspaceDB calls this *two-pass search*): the search collects `RerankOversample * k` candidates from the codes and re-scores them exactly. The pool matters more than anything
+else: with the default of 25x, ternary and binary reached recall 1.0 in our benchmark where a 4x pool recovered under half of the true neighbours. The default is 25 for ternary, binary and product
+quantization and 4 for the others; tune it on your own data.
 
 ```csharp
-var options = new HyperspaceOptions { Dimension = 1024, Quantization = QuantizationMode.Ternary, KeepOriginalVectors = true, RerankOversample = 4 };
+var options = new HyperspaceOptions { Dimension = 1024, Quantization = QuantizationMode.Ternary, KeepOriginalVectors = true };   // RerankOversample defaults to 25
 ...
-index.Search(query, 10);                                                       // 40 candidates from the codes, re-scored exactly
+index.Search(query, 10);                                                       // 250 candidates from the codes, re-scored exactly
 index.Search(query, 10, new SearchOptions { RerankOversample = 1 });           // first pass only
 ```
 

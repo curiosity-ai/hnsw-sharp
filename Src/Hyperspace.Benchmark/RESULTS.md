@@ -14,91 +14,91 @@ How to read the columns:
   cache is freed with `DisableDistanceCache()` first; both libraries have their layer 0 flattened (`OptimizeIfNeeded` / `FreezeFlatLayer0`).
 * **Build** is wall-clock for the whole build (Hyperspace encodes in parallel and links sequentially; for PQ it includes codebook training).
 * **QPS** counts complete single queries (`Search(query, k)`, which allocates its result array); the multi-thread column runs queries in parallel on 4 cores.
-* `+ rerank x4` keeps the original float32 vectors (so it costs their memory) and re-scores 4k candidates exactly.
+* `+ rerank` keeps the original float32 vectors (so it costs their memory) and re-scores the codec's default pool of candidates exactly (4k for Int8, 25k for ternary, binary and product quantization).
 * Hyperspace rows use its defaults (`LevelProbability = 1/M`); the `p = 0.5` row is HyperspaceDB's value.
 
 | Index | Build | Heap | B/vec | ef | Recall@10 | QPS 1 thread | QPS 4 threads |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HNSW.Net (SelectSimple) | 2.1 s | 19.0 MiB | 996 | 16 | 0.5498 | 39,838 | 120,712 |
-|  |  |  |  | 32 | 0.5556 | 30,975 | 100,285 |
-|  |  |  |  | 64 | 0.5572 | 18,460 | 62,553 |
-|  |  |  |  | 128 | 0.5578 | 12,239 | 36,426 |
-|  |  |  |  | 256 | 0.5578 | 11,181 | 34,782 |
-| HNSW.Net (SelectHeuristic) | 2.9 s | 19.0 MiB | 996 | 16 | 0.9396 | 26,095 | 75,993 |
-|  |  |  |  | 32 | 0.9926 | 18,124 | 59,486 |
-|  |  |  |  | 64 | 0.9994 | 18,051 | 47,583 |
-|  |  |  |  | 128 | 1.0000 | 7,661 | 25,744 |
-|  |  |  |  | 256 | 1.0000 | 5,800 | 18,636 |
-| Hyperspace Float32 | 2.5 s | 14.6 MiB | 767 | 16 | 0.9554 | 30,642 | 116,966 |
-|  |  |  |  | 32 | 0.9938 | 29,660 | 75,595 |
-|  |  |  |  | 64 | 0.9996 | 13,141 | 53,271 |
-|  |  |  |  | 128 | 1.0000 | 8,573 | 37,753 |
-|  |  |  |  | 256 | 1.0000 | 6,170 | 18,595 |
-| Hyperspace Float32 (level p=0.5, as HyperspaceDB) | 4.5 s | 16.7 MiB | 875 | 16 | 0.9530 | 23,609 | 103,814 |
-|  |  |  |  | 32 | 0.9934 | 29,920 | 83,577 |
-|  |  |  |  | 64 | 0.9996 | 20,190 | 58,048 |
-|  |  |  |  | 128 | 1.0000 | 13,370 | 38,574 |
-|  |  |  |  | 256 | 1.0000 | 4,665 | 15,877 |
-| Hyperspace Float64 (default) | 3.6 s | 24.2 MiB | 1271 | 16 | 0.9554 | 22,130 | 78,720 |
-|  |  |  |  | 32 | 0.9938 | 14,720 | 63,369 |
-|  |  |  |  | 64 | 0.9996 | 10,703 | 43,991 |
-|  |  |  |  | 128 | 1.0000 | 8,290 | 36,480 |
-|  |  |  |  | 256 | 1.0000 | 3,296 | 15,158 |
-| Hyperspace Int8 | 1.9 s | 7.3 MiB | 383 | 16 | 0.9480 | 51,221 | 146,545 |
-|  |  |  |  | 32 | 0.9804 | 38,508 | 113,988 |
-|  |  |  |  | 64 | 0.9854 | 25,404 | 75,124 |
-|  |  |  |  | 128 | 0.9860 | 16,485 | 50,033 |
-|  |  |  |  | 256 | 0.9860 | 5,758 | 22,482 |
-| Hyperspace Int4 | 7.0 s | 6.8 MiB | 354 | 16 | 0.8352 | 21,681 | 67,396 |
-|  |  |  |  | 32 | 0.8504 | 16,749 | 49,905 |
-|  |  |  |  | 64 | 0.8516 | 10,467 | 40,474 |
-|  |  |  |  | 128 | 0.8518 | 7,979 | 30,895 |
-|  |  |  |  | 256 | 0.8518 | 3,654 | 13,755 |
-| Hyperspace Turbo | 6.9 s | 6.4 MiB | 335 | 16 | 0.7286 | 29,690 | 87,117 |
-|  |  |  |  | 32 | 0.7378 | 22,408 | 68,156 |
-|  |  |  |  | 64 | 0.7388 | 15,185 | 52,783 |
-|  |  |  |  | 128 | 0.7390 | 12,312 | 40,278 |
-|  |  |  |  | 256 | 0.7390 | 5,990 | 20,209 |
-| Hyperspace Ternary | 3.7 s | 4.4 MiB | 229 | 16 | 0.2106 | 40,524 | 119,918 |
-|  |  |  |  | 32 | 0.2874 | 24,845 | 79,985 |
-|  |  |  |  | 64 | 0.3720 | 15,542 | 58,586 |
-|  |  |  |  | 128 | 0.4288 | 13,021 | 44,307 |
-|  |  |  |  | 256 | 0.4516 | 8,300 | 28,321 |
-| Hyperspace Ternary + rerank x4 | 4.2 s | 14.8 MiB | 778 | 16 | 0.5778 | 19,109 | 63,070 |
-|  |  |  |  | 32 | 0.5778 | 18,216 | 63,493 |
-|  |  |  |  | 64 | 0.6948 | 14,849 | 47,637 |
-|  |  |  |  | 128 | 0.8078 | 9,711 | 39,168 |
-|  |  |  |  | 256 | 0.8516 | 6,838 | 26,737 |
-| Hyperspace Binary | 7.5 s | 5.7 MiB | 300 | 16 | 0.3100 | 43,147 | 145,190 |
-|  |  |  |  | 32 | 0.3132 | 31,711 | 112,115 |
-|  |  |  |  | 64 | 0.3128 | 23,108 | 78,155 |
-|  |  |  |  | 128 | 0.3128 | 16,817 | 58,502 |
-|  |  |  |  | 256 | 0.3128 | 7,395 | 26,438 |
-| Hyperspace Binary + rerank x4 | 7.1 s | 16.1 MiB | 842 | 16 | 0.6980 | 29,154 | 80,392 |
-|  |  |  |  | 32 | 0.6980 | 20,368 | 78,314 |
-|  |  |  |  | 64 | 0.6984 | 19,053 | 59,822 |
-|  |  |  |  | 128 | 0.6984 | 13,186 | 50,291 |
-|  |  |  |  | 256 | 0.6984 | 6,585 | 23,951 |
-| Hyperspace PQ | 3.4 s | 3.8 MiB | 199 | 16 | 0.0290 | 37,999 | 118,479 |
-|  |  |  |  | 32 | 0.0400 | 35,472 | 108,231 |
-|  |  |  |  | 64 | 0.0548 | 26,541 | 81,626 |
-|  |  |  |  | 128 | 0.0772 | 20,173 | 62,775 |
-|  |  |  |  | 256 | 0.0954 | 12,623 | 40,721 |
-| Hyperspace PQ + rerank x4 | 3.2 s | 14.1 MiB | 739 | 16 | 0.1010 | 25,774 | 83,240 |
-|  |  |  |  | 32 | 0.1010 | 27,588 | 81,946 |
-|  |  |  |  | 64 | 0.1194 | 24,311 | 73,533 |
-|  |  |  |  | 128 | 0.1686 | 15,535 | 52,387 |
-|  |  |  |  | 256 | 0.2198 | 10,324 | 37,416 |
-| Hyperspace OPQ | 2.9 s | 3.6 MiB | 190 | 16 | 0.0364 | 35,855 | 109,988 |
-|  |  |  |  | 32 | 0.0504 | 33,906 | 99,949 |
-|  |  |  |  | 64 | 0.0642 | 28,028 | 80,046 |
-|  |  |  |  | 128 | 0.0800 | 18,852 | 62,293 |
-|  |  |  |  | 256 | 0.0964 | 12,612 | 43,068 |
-| Hyperspace Int8 + rerank x4 | 1.9 s | 17.8 MiB | 932 | 16 | 0.9966 | 27,471 | 86,731 |
-|  |  |  |  | 32 | 0.9966 | 29,327 | 80,911 |
-|  |  |  |  | 64 | 0.9994 | 21,649 | 68,031 |
-|  |  |  |  | 128 | 1.0000 | 12,826 | 44,280 |
-|  |  |  |  | 256 | 1.0000 | 5,331 | 22,538 |
+| HNSW.Net (SelectSimple) | 1.9 s | 19.0 MiB | 996 | 16 | 0.5460 | 37,865 | 113,816 |
+|  |  |  |  | 32 | 0.5512 | 24,866 | 79,485 |
+|  |  |  |  | 64 | 0.5528 | 18,933 | 58,716 |
+|  |  |  |  | 128 | 0.5532 | 16,590 | 42,423 |
+|  |  |  |  | 256 | 0.5532 | 11,028 | 33,760 |
+| HNSW.Net (SelectHeuristic) | 2.6 s | 19.0 MiB | 996 | 16 | 0.9456 | 32,998 | 93,191 |
+|  |  |  |  | 32 | 0.9922 | 22,245 | 66,562 |
+|  |  |  |  | 64 | 0.9994 | 13,935 | 49,525 |
+|  |  |  |  | 128 | 1.0000 | 8,297 | 35,306 |
+|  |  |  |  | 256 | 1.0000 | 4,296 | 18,076 |
+| Hyperspace Float32 | 2.4 s | 14.6 MiB | 767 | 16 | 0.9554 | 34,321 | 129,271 |
+|  |  |  |  | 32 | 0.9938 | 25,579 | 80,844 |
+|  |  |  |  | 64 | 0.9996 | 16,897 | 57,680 |
+|  |  |  |  | 128 | 1.0000 | 12,722 | 38,950 |
+|  |  |  |  | 256 | 1.0000 | 4,854 | 19,370 |
+| Hyperspace Float32 (level p=0.5, as HyperspaceDB) | 4.1 s | 16.7 MiB | 875 | 16 | 0.9530 | 30,883 | 100,651 |
+|  |  |  |  | 32 | 0.9934 | 22,867 | 71,910 |
+|  |  |  |  | 64 | 0.9996 | 15,241 | 52,613 |
+|  |  |  |  | 128 | 1.0000 | 9,857 | 37,264 |
+|  |  |  |  | 256 | 1.0000 | 5,386 | 19,704 |
+| Hyperspace Float64 (default) | 2.7 s | 24.2 MiB | 1271 | 16 | 0.9554 | 31,901 | 91,210 |
+|  |  |  |  | 32 | 0.9938 | 17,654 | 66,807 |
+|  |  |  |  | 64 | 0.9996 | 15,239 | 43,517 |
+|  |  |  |  | 128 | 1.0000 | 8,077 | 30,975 |
+|  |  |  |  | 256 | 1.0000 | 3,880 | 14,423 |
+| Hyperspace Int8 | 2.1 s | 7.3 MiB | 383 | 16 | 0.9480 | 47,687 | 159,419 |
+|  |  |  |  | 32 | 0.9804 | 36,742 | 109,920 |
+|  |  |  |  | 64 | 0.9854 | 21,461 | 75,728 |
+|  |  |  |  | 128 | 0.9860 | 14,303 | 48,744 |
+|  |  |  |  | 256 | 0.9860 | 6,536 | 23,992 |
+| Hyperspace Int4 | 3.6 s | 6.8 MiB | 354 | 16 | 0.8352 | 24,675 | 76,612 |
+|  |  |  |  | 32 | 0.8504 | 18,028 | 53,282 |
+|  |  |  |  | 64 | 0.8516 | 11,898 | 46,538 |
+|  |  |  |  | 128 | 0.8518 | 9,100 | 33,905 |
+|  |  |  |  | 256 | 0.8518 | 4,560 | 17,365 |
+| Hyperspace Turbo | 3.8 s | 6.4 MiB | 335 | 16 | 0.7286 | 26,697 | 83,880 |
+|  |  |  |  | 32 | 0.7378 | 22,191 | 67,512 |
+|  |  |  |  | 64 | 0.7388 | 16,088 | 51,220 |
+|  |  |  |  | 128 | 0.7390 | 11,066 | 38,945 |
+|  |  |  |  | 256 | 0.7390 | 5,705 | 19,574 |
+| Hyperspace Ternary | 2.7 s | 5.9 MiB | 309 | 16 | 0.4488 | 24,247 | 77,418 |
+|  |  |  |  | 32 | 0.4534 | 20,001 | 62,625 |
+|  |  |  |  | 64 | 0.4532 | 15,666 | 47,714 |
+|  |  |  |  | 128 | 0.4532 | 10,719 | 36,127 |
+|  |  |  |  | 256 | 0.4532 | 4,653 | 17,185 |
+| Hyperspace Ternary + rerank | 2.8 s | 16.4 MiB | 858 | 16 | 1.0000 | 4,495 | 16,181 |
+|  |  |  |  | 32 | 1.0000 | 4,530 | 16,307 |
+|  |  |  |  | 64 | 1.0000 | 4,355 | 15,500 |
+|  |  |  |  | 128 | 1.0000 | 3,847 | 15,397 |
+|  |  |  |  | 256 | 1.0000 | 3,976 | 14,795 |
+| Hyperspace Binary | 1.6 s | 5.8 MiB | 301 | 16 | 0.3102 | 46,519 | 132,531 |
+|  |  |  |  | 32 | 0.3132 | 36,654 | 108,816 |
+|  |  |  |  | 64 | 0.3128 | 21,432 | 79,748 |
+|  |  |  |  | 128 | 0.3128 | 15,892 | 54,453 |
+|  |  |  |  | 256 | 0.3128 | 7,295 | 26,454 |
+| Hyperspace Binary + rerank | 1.7 s | 16.2 MiB | 850 | 16 | 1.0000 | 5,364 | 21,170 |
+|  |  |  |  | 32 | 1.0000 | 5,999 | 20,534 |
+|  |  |  |  | 64 | 1.0000 | 5,470 | 22,594 |
+|  |  |  |  | 128 | 1.0000 | 5,769 | 22,092 |
+|  |  |  |  | 256 | 1.0000 | 5,491 | 20,853 |
+| Hyperspace PQ | 2.8 s | 3.8 MiB | 199 | 16 | 0.0290 | 39,006 | 117,538 |
+|  |  |  |  | 32 | 0.0400 | 33,459 | 105,539 |
+|  |  |  |  | 64 | 0.0548 | 26,969 | 84,352 |
+|  |  |  |  | 128 | 0.0772 | 20,139 | 61,366 |
+|  |  |  |  | 256 | 0.0954 | 12,805 | 42,418 |
+| Hyperspace PQ + rerank | 2.7 s | 14.1 MiB | 739 | 16 | 0.3104 | 7,746 | 31,096 |
+|  |  |  |  | 32 | 0.3104 | 7,968 | 29,937 |
+|  |  |  |  | 64 | 0.3104 | 8,227 | 30,253 |
+|  |  |  |  | 128 | 0.3104 | 8,396 | 30,228 |
+|  |  |  |  | 256 | 0.3124 | 7,324 | 29,229 |
+| Hyperspace OPQ | 2.8 s | 3.6 MiB | 190 | 16 | 0.0364 | 30,193 | 112,200 |
+|  |  |  |  | 32 | 0.0504 | 32,826 | 79,488 |
+|  |  |  |  | 64 | 0.0642 | 24,087 | 72,368 |
+|  |  |  |  | 128 | 0.0800 | 19,600 | 60,675 |
+|  |  |  |  | 256 | 0.0964 | 11,896 | 40,647 |
+| Hyperspace Int8 + rerank | 2.1 s | 17.8 MiB | 932 | 16 | 0.9966 | 23,627 | 76,985 |
+|  |  |  |  | 32 | 0.9966 | 23,753 | 75,363 |
+|  |  |  |  | 64 | 0.9994 | 19,271 | 62,821 |
+|  |  |  |  | 128 | 1.0000 | 12,647 | 43,617 |
+|  |  |  |  | 256 | 1.0000 | 5,747 | 21,774 |
 
 ## What the numbers say
 
@@ -109,10 +109,13 @@ How to read the columns:
   inside clusters; `SelectHeuristic` (what Hyperspace always uses) does not. This depends on the data but is worth knowing.
 * **`Float64`, Hyperspace's default storage, is about two thirds as fast and 1.7x larger than `Float32`** with identical recall. For ordinary Euclidean /
   cosine embeddings set `Quantization = Float32`; keep float64 for hyperbolic data near the ball boundary.
-* **Quantized storage now pays off.** `Int8` is 2x smaller than `Float32` (7.3 vs 14.6 MiB), builds as fast and, at ef 16, searches about as fast or faster (51k vs 31k QPS in this run)
-  for a recall of 0.985 instead of 1.0; with `+ rerank x4` it reaches 0.9994. TurboQuant and 4-bit keep 0.74 / 0.85 recall at 6.4 / 6.8 MiB. The
-  aggressive codecs are fast but, on this tightly clustered data, inaccurate: ternary reaches 0.37 single-pass and 0.69 re-ranked, binary 0.31 and 0.70, and
-  product quantization about 0.06 and 0.12 (8 sub-vectors of 16 dimensions against clusters whose members differ by less than the quantization error).
+* **Quantized storage now pays off.** `Int8` is 2x smaller than `Float32` (7.3 vs 14.6 MiB), builds as fast and, at ef 16, searches faster (48k vs 34k QPS in this run)
+  for a recall of 0.95-0.985 instead of 1.0; with `+ rerank` it reaches 0.9966-1.0. TurboQuant and 4-bit keep 0.74 / 0.85 recall at 6.4 / 6.8 MiB.
+* **The aggressive codecs need re-ranking, with a big enough pool.** On this tightly clustered data ternary reaches 0.45 and binary 0.31 on their own, but **1.0000 with `+ rerank`**
+  (the default pool is 25x the requested count), at roughly 4.5k-5.5k QPS and the memory of the extra float32 copy. Product quantization (8 bytes) reaches only 0.31 re-ranked: its
+  codes rank this data too coarsely for a 25x pool. The pool is the lever, not the graph: in the `--rerank` experiment (128 dims, 100 clusters of 200, ef 256) recall at pools of
+  4x / 10x / 25x / 50x was 0.45 / 0.79 / 0.99 / 1.00 for ternary, 0.39 / 0.74 / 1.00 / 1.00 for binary and 0.34 / 0.69 / 1.00 / 1.00 for product quantization, and the default of 4x used before
+  recovered under half of the true neighbours. How big a pool a codec needs depends on the data and the dimension: tune `RerankOversample` on your own vectors.
 * **The graph is about 400 bytes per vector at 128 dimensions** (links and .NET object overhead), against 512 for a float32 vector, so even 8-byte PQ codes only
   reach about 190 B/vector. Quantization pays off more at higher dimensions.
 
@@ -120,7 +123,7 @@ How to read the columns:
 
 | | first run | now |
 |---|---:|---:|
-| Float32 build / heap | 4.4 s / 17.5 MiB | 2.5 s / 14.6 MiB |
+| Float32 build / heap | 4.4 s / 17.5 MiB | 2.4 s / 14.6 MiB |
 | Int8 build / heap / QPS (ef 16, 1 thread) | 10.1 s / 10.2 MiB / 14.9k | 1.9 s / 7.3 MiB / 51.2k |
 | Turbo build / QPS (ef 64) | 20.2 s / 5.1k | 6.9 s / 15.2k |
 | Binary build / QPS (ef 64) | 32.2 s / 2.8k | 7.5 s / 23.1k |
@@ -137,6 +140,31 @@ Three changes are involved; they were not all ablated:
    with per-query table allocation having cancelled the kernel gains, but I did not run a separate ablation to prove it.
 
 The kernels themselves are fast. `--micro` (cache-resident vectors, one call): at 128 dimensions Float32 29 ns, Int8 37 ns, Binary 17 ns, Turbo 59 ns, Ternary 78 ns, Int4 114 ns.
+
+## The quantized codecs (graph construction, re-ranking)
+
+Graph construction compares stored vectors with each other, and for the quantized codecs that had been decoding both to floats and running a float metric. `--micro` (128 dims, ns per call):
+
+| mode | query to vector | vector to vector, before | vector to vector, now |
+|---|---:|---:|---:|
+| Float32 | 29 | 23 | 23 |
+| Int8 | 37 | 44 | 44 (unchanged) |
+| 4-bit | 78 (was 125) | 419 | 104 |
+| TurboQuant | 47 | 549 | 133 |
+| Ternary | 76 | 1,362 | 17 |
+| Binary | 16 | 1,098 | 6 |
+| PQ / OPQ | 13 / 7 | 212 / 171 | 41 / 20 |
+
+The new kernels compare the codes directly (popcount of the XOR for binary, popcounts of the bit planes for ternary, table lookups per nibble pair for TurboQuant and 4-bit, a
+symmetric centroid table for PQ) and are exact: recall was bit-identical before and after on every row. Build times (20,000 x 128): binary 7.5 s to 1.6 s, 4-bit 7.0 s to 3.6 s,
+TurboQuant 6.9 s to 3.8 s. The PQ symmetric table costs 256 KiB per sub-vector, so it is dropped when the index is frozen (it added 2 MiB to the 20,000-vector PQ index until then).
+
+Two findings from the recall work:
+
+* **A real bug, found by an experiment that was meant to do something else.** Ternary with the cosine metric compared stored vectors by the squared L2 of the decoded codes (shorter than unit length) while
+  scoring queries by `2 (1 - cos)`; the neighbour-selection heuristic weighs one against the other, so the graph was sparse and poor (recall 0.43 at a 25x pool against 0.99+). It surfaced because building
+  the graph from the original vectors "fixed" it. Ternary's graph is now denser (+1.5 MiB here) and its recall rose (0.37 to 0.45 single-pass).
+* **Building the graph from the original vectors (`BuildFromOriginals`, tried and removed) changed nothing for any other codec.**
 
 ## Optimization experiments after that, with what held up
 
