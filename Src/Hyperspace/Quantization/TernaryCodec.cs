@@ -52,7 +52,8 @@ namespace Hyperspace
 
             if (TailDim > 0)
             {
-                var tail = vector.Slice(_head).ToArray();
+                var tail = ScratchFloats(TailDim);
+                vector.Slice(_head).CopyTo(tail);
                 TurboRotation.Rotate(tail);
                 float meanAbs = 0;
                 foreach (var x in tail)
@@ -120,7 +121,7 @@ namespace Hyperspace
             ReconstructRotated(stored, output);
             if (TailDim > 0)
             {
-                var tail = new float[TailDim];
+                var tail = ScratchFloats(TailDim);
                 for (int i = 0; i < tail.Length; i++)
                 {
                     tail[i] = (float)output[_head + i];
@@ -160,12 +161,13 @@ namespace Hyperspace
             }
         }
 
-        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var q = base.Prepare(query);
+            var q = base.Prepare(query, reuse);
             if (TailDim > 0)
             {
-                var tail = query.Slice(_head).ToArray();
+                var tail = q.Rotated is { } r && r.Length == TailDim ? r : new float[TailDim];
+                query.Slice(_head).CopyTo(tail);
                 TurboRotation.Rotate(tail);
                 q.Rotated = tail;
                 double sq = 0;
@@ -177,7 +179,7 @@ namespace Hyperspace
                 q.TailNormSq = sq;
                 if (Metric is DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot)
                 {
-                    q.Table = QuantSimd.BuildTernaryTable(tail, PlaneBytes * 2);
+                    q.Table = QuantSimd.BuildTernaryTable(tail, PlaneBytes * 2, q.Table);
                 }
             }
             else

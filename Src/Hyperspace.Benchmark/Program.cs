@@ -9,6 +9,11 @@ using System.Text;
 using HNSW.Net;
 using Hyperspace;
 
+if (args.Contains("--micro")) { Micro.Run(args); return; }
+#if DIAG
+if (args.Contains("--evals")) { Evals.Run(); return; }
+#endif
+
 int n = 20000, dim = 128, nq = 500, k = 10;
 string? only = null, outPath = null;
 for (int i = 0; i < args.Length - 1; i++)
@@ -132,6 +137,8 @@ foreach (var (label, heuristic) in new[] { ("HNSW.Net (SelectSimple)", Neighbour
 var configs = new List<(string Name, Action<HyperspaceOptions> Configure, bool Pq, int Rerank)>
 {
     ("Hyperspace Float32", o => o.Quantization = QuantizationMode.Float32, false, 1),
+    ("Hyperspace Float32 (level p=1/8)", o => { o.Quantization = QuantizationMode.Float32; o.LevelProbability = 1.0 / 8; }, false, 1),
+    ("Hyperspace Float32 (level p=1/16 = 1/M)", o => { o.Quantization = QuantizationMode.Float32; o.LevelProbability = 1.0 / 16; }, false, 1),
     ("Hyperspace Float64 (default)", o => o.Quantization = QuantizationMode.None, false, 1),
     ("Hyperspace Int8", o => o.Quantization = QuantizationMode.ScalarInt8, false, 1),
     ("Hyperspace Int4", o => o.Quantization = QuantizationMode.ScalarInt4, false, 1),
@@ -168,3 +175,88 @@ foreach (var (name, configure, pq, rerank) in configs)
 }
 
 if (outPath is not null) File.WriteAllText(outPath, table.ToString());
+
+// ---- --micro: cost of one distance evaluation per storage mode (the traversal around it is not measured)
+static class Micro
+{
+    public static void Run(string[] args)
+    {
+        int dim = 128, count = 4096;
+        for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--dim") dim = int.Parse(args[i + 1]);
+        var rnd = new Random(1);
+        float[] Unit() { var v = new float[dim]; double s = 0; for (int d = 0; d < dim; d++) { v[d] = (float)(Math.Sqrt(-2 * Math.Log(1 - rnd.NextDouble())) * Math.Cos(2 * Math.PI * rnd.NextDouble())); s += v[d] * v[d]; } for (int d = 0; d < dim; d++) v[d] /= (float)Math.Sqrt(s); return v; }
+        var vectors = Enumerable.Range(0, count).Select(_ => Unit()).ToArray();
+        var query = Unit();
+        // The traversal around a distance: one priority-queue push + pop at the size a search keeps (ef = 64), as the search does for every candidate.
+        {
+            var queue = new PriorityQueue<int, double>();
+            for (int i = 0; i < 64; i++) queue.Enqueue(i, rnd.NextDouble());
+            var keys = Enumerable.Range(0, 4096).Select(_ => rnd.NextDouble()).ToArray();
+            double sum = 0;
+            for (int w = 0; w < 200000; w++) { queue.Enqueue(w, keys[w & 4095]); queue.TryDequeue(out _, out var pr); sum += pr; }
+            var clock = Stopwatch.StartNew(); long ops = 0;
+            while (clock.Elapsed.TotalMilliseconds < 400) { for (int w = 0; w < 100000; w++) { queue.Enqueue(w, keys[w & 4095]); queue.TryDequeue(out _, out var pr); sum += pr; } ops += 100000; }
+            Console.WriteLine($"PriorityQueue<int, double> push + pop at size 64: {clock.Elapsed.TotalMilliseconds * 1e6 / ops:F0} ns  ({sum > 0})\n");
+        }
+
+        Console.WriteLine($"dim={dim}: ns per Distance call over {count} stored vectors (cache-resident), and the decode-then-metric reference");
+        Console.WriteLine("| mode | stored bytes | fast path ns | decode + metric ns | speed-up |");
+        Console.WriteLine("|---|---:|---:|---:|---:|");
+        foreach (var mode in new[] { QuantizationMode.Float32, QuantizationMode.ScalarInt8, QuantizationMode.ScalarInt4, QuantizationMode.Turbo, QuantizationMode.Ternary, QuantizationMode.Binary })
+        {
+            var o = new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, NormalizeVectors = false, ValidateVectors = false };
+            var codec = VectorCodec.Create(o);
+            var stored = vectors.Select(v => codec.Encode(v)).ToArray();
+            var prepared = codec.Prepare(query);
+            var decoded = new float[dim];
+            double sink = 0;
+            double Time(Func<byte[], double> f)
+            {
+                for (int w = 0; w < 3; w++) foreach (var s in stored) sink += f(s);
+                var sw = Stopwatch.StartNew(); int calls = 0;
+                while (sw.Elapsed.TotalMilliseconds < 400) { foreach (var s in stored) sink += f(s); calls += stored.Length; }
+                return sw.Elapsed.TotalMilliseconds * 1e6 / calls;
+            }
+            double fast = Time(s => codec.Distance(s, prepared));
+            double reference = Time(s => { codec.Decode(s, decoded); return Metrics.Distance(DistanceMetric.Cosine, (ReadOnlySpan<float>)decoded, query); });
+            Console.WriteLine($"| {mode} | {codec.EncodedLength} | {fast:F0} | {reference:F0} | {reference / fast:F1}x |");
+            GC.KeepAlive(sink);
+        }
+    }
+}
+
+#if DIAG
+// ---- --evals (build with -p:DefineConstants=DIAG): distance evaluations per query, to separate traversal length from the cost of one distance
+static class Evals
+{
+    public static void Run()
+    {
+        int n = 20000, dim = 128;
+        var rnd = new Random(1);
+        double G() => Math.Sqrt(-2 * Math.Log(1 - rnd.NextDouble())) * Math.Cos(2 * Math.PI * rnd.NextDouble());
+        var centres = Enumerable.Range(0, 100).Select(_ => Enumerable.Range(0, dim).Select(__ => (float)G()).ToArray()).ToArray();
+        float[][] Gen(int c) => Enumerable.Range(0, c).Select(_ => { var cc = centres[rnd.Next(100)]; var v = cc.Select(x => x + (float)G() * 0.15f).ToArray(); var s = Math.Sqrt(v.Sum(x => (double)x * x)); return v.Select(x => (float)(x / s)).ToArray(); }).ToArray();
+        var data = Gen(n); var queries = Gen(500);
+        Console.WriteLine("| mode | ef | evaluations / query | us / query | ns / evaluation |");
+        Console.WriteLine("|---|---:|---:|---:|---:|");
+        foreach (var mode in new[] { QuantizationMode.Float32, QuantizationMode.ScalarInt8, QuantizationMode.ScalarInt4, QuantizationMode.Turbo, QuantizationMode.Ternary, QuantizationMode.Binary })
+        {
+            var index = new HyperspaceIndex(new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, M = 16, EfConstruction = 100, Seed = 1, ValidateVectors = false });
+            index.AddRange(data);
+            index.FreezeFlatLayer0();
+            var results = new SearchResult[10];
+            foreach (int ef in new[] { 64 })
+            {
+                var so = new SearchOptions { Ef = ef };
+                for (int w = 0; w < 100; w++) index.Search(queries[w], results, so);
+                HyperspaceIndex.DiagEvaluations = 0;
+                var sw = Stopwatch.StartNew();
+                for (int q = 0; q < queries.Length; q++) index.Search(queries[q], results, so);
+                double us = sw.Elapsed.TotalMilliseconds * 1000 / queries.Length;
+                double evals = HyperspaceIndex.DiagEvaluations / (double)queries.Length;
+                Console.WriteLine($"| {mode} | {ef} | {evals:F0} | {us:F0} | {us * 1000 / evals:F0} |");
+            }
+        }
+    }
+}
+#endif

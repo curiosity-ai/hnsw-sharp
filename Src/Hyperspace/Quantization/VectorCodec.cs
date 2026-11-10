@@ -145,27 +145,25 @@ namespace Hyperspace
         /// <summary>Reconstructs the (approximate) original vector.</summary>
         public abstract void Decode(ReadOnlySpan<byte> stored, Span<float> destination);
 
-        public virtual PreparedQuery Prepare(ReadOnlySpan<float> query)
+        /// <summary>
+        /// Prepares a query. When <paramref name="reuse"/> (a query previously prepared by this codec) is given, its arrays are overwritten instead of
+        /// allocating new ones; the returned object is then <paramref name="reuse"/> itself.
+        /// </summary>
+        public virtual PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var d = new double[query.Length];
+            var q = reuse is not null && reuse.Coords.Length == query.Length ? reuse : new PreparedQuery(new double[query.Length], new float[query.Length]);
+            query.CopyTo(q.Coords32);
+            double sq = 0;
+            var d = q.Coords;
             for (int i = 0; i < d.Length; i++)
             {
-                d[i] = query[i];
-            }
-
-            var q = new PreparedQuery(d, query.ToArray());
-            double sq = 0;
-            foreach (var x in d)
-            {
+                double x = query[i];
+                d[i] = x;
                 sq += x * x;
             }
 
             q.Norm = Math.Sqrt(sq);
-            if (Metric == DistanceMetric.Poincare)
-            {
-                q.Alpha = Metrics.ConformalAlpha<double>(d);
-            }
-
+            q.Alpha = Metric == DistanceMetric.Poincare ? 1.0 / (1.0 - sq) : 1.0;
             return q;
         }
 
@@ -174,6 +172,21 @@ namespace Hyperspace
 
         /// <summary>Distance used while routing through the upper layers; defaults to <see cref="Distance"/>.</summary>
         public virtual double UpperDistance(ReadOnlySpan<byte> stored, PreparedQuery query) => Distance(stored, query);
+
+        [ThreadStatic]
+        private static float[]? floatScratch;
+
+        /// <summary>A reusable per-thread float buffer for the temporaries of <c>Encode</c> / <c>Decode</c> (valid until the next call on this thread).</summary>
+        protected static Span<float> ScratchFloats(int length)
+        {
+            var s = floatScratch;
+            if (s is null || s.Length < length)
+            {
+                s = floatScratch = new float[Math.Max(length, 64)];
+            }
+
+            return s.AsSpan(0, length);
+        }
 
         protected static double[] Scratch(int length)
         {

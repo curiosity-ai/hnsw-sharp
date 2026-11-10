@@ -142,9 +142,9 @@ namespace Hyperspace
             }
         }
 
-        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var q = base.Prepare(query);
+            var q = base.Prepare(query, reuse);
             if (IsFastMetric && TailDim > 0)
             {
                 var tail = q.Coords32.AsSpan(_head);
@@ -155,7 +155,7 @@ namespace Hyperspace
                 }
 
                 q.TailNormSq = sq;
-                q.Table = QuantSimd.BuildNibblePairTable(tail, Levels, Blocks * (BlockSize / 2));
+                q.Table = QuantSimd.BuildNibblePairTable(tail, Levels, Blocks * (BlockSize / 2), q.Table);
             }
 
             return q;

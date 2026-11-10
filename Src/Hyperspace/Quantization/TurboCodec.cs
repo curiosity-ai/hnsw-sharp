@@ -111,7 +111,8 @@ namespace Hyperspace
                 return bytes;
             }
 
-            var tail = vector.Slice(_head).ToArray();
+            var tail = ScratchFloats(TailDim);
+            vector.Slice(_head).CopyTo(tail);
             TurboRotation.Rotate(tail);
             double normSq = 0;
             foreach (var x in tail)
@@ -193,7 +194,7 @@ namespace Hyperspace
         {
             var buf = Scratch(Dimension);
             ReconstructRotated(stored, buf.AsSpan(0, Dimension));
-            var tail = new float[TailDim];
+            var tail = ScratchFloats(TailDim);
             for (int i = 0; i < tail.Length; i++)
             {
                 tail[i] = (float)buf[_head + i];
@@ -206,10 +207,11 @@ namespace Hyperspace
             }
         }
 
-        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var q = base.Prepare(query);
-            var tail = TailDim > 0 ? query.Slice(_head).ToArray() : Array.Empty<float>();
+            var q = base.Prepare(query, reuse);
+            var tail = TailDim == 0 ? Array.Empty<float>() : q.Rotated is { } r && r.Length == TailDim ? r : new float[TailDim];
+            query.Slice(_head).CopyTo(tail);
             TurboRotation.Rotate(tail);
             q.Rotated = tail;
             double sq = 0;
@@ -221,7 +223,7 @@ namespace Hyperspace
             q.TailNormSq = sq;
             if (Metric is DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot && tail.Length >= 2)
             {
-                q.Table = QuantSimd.BuildNibblePairTable(tail, CentroidsF, tail.Length / 2);
+                q.Table = QuantSimd.BuildNibblePairTable(tail, CentroidsF, tail.Length / 2, q.Table);
             }
 
             return q;
@@ -240,7 +242,7 @@ namespace Hyperspace
                         // Back to the original basis for the geometries that are not rotation invariant.
                         var buf = Scratch(Dimension);
                         ReconstructRotated(stored, buf.AsSpan(0, Dimension));
-                        var tail = new float[TailDim];
+                        var tail = ScratchFloats(TailDim);
                         for (int i = 0; i < tail.Length; i++)
                         {
                             tail[i] = (float)buf[_head + i];

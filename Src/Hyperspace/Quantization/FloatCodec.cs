@@ -70,9 +70,9 @@ namespace Hyperspace
             return Metrics.Distance(Metric, MemoryMarshal.Cast<byte, float>(a), MemoryMarshal.Cast<byte, float>(b));
         }
 
-        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var q = base.Prepare(query);
+            var q = base.Prepare(query, reuse);
             if (_fastRouting)
             {
                 double sq = 0;
@@ -82,7 +82,7 @@ namespace Hyperspace
                 }
 
                 double f = 2.0 / (1.0 + sq);
-                var k = new double[q.Coords.Length];
+                var k = q.Klein is { } existing && existing.Length == q.Coords.Length ? existing : new double[q.Coords.Length];
                 for (int i = 0; i < k.Length; i++)
                 {
                     k[i] = q.Coords[i] * f;

@@ -140,9 +140,9 @@ namespace Hyperspace
         /// <c>levels[b >> 4] * query[2p] + levels[b &amp; 15] * query[2p + 1]</c>, so the dot product with a code is one lookup per byte.
         /// Dimensions beyond the end of <paramref name="query"/> count as 0.
         /// </summary>
-        public static float[] BuildNibblePairTable(ReadOnlySpan<float> query, ReadOnlySpan<float> levels, int bytes)
+        public static float[] BuildNibblePairTable(ReadOnlySpan<float> query, ReadOnlySpan<float> levels, int bytes, float[]? reuse = null)
         {
-            var table = new float[bytes * 256];
+            var table = reuse is not null && reuse.Length == bytes * 256 ? reuse : new float[bytes * 256];
             Span<float> hi = stackalloc float[16];
             Span<float> lo = stackalloc float[16];
             for (int p = 0; p < bytes; p++)
@@ -195,9 +195,9 @@ namespace Hyperspace
         /// A table for sign bits, eight dimensions per byte: <c>table[c * 256 + b]</c> is the sum of <c>+query[8c + j]</c> for the set bits j of b
         /// and <c>-query[8c + j]</c> for the clear ones. Dimensions beyond the end of <paramref name="query"/> count as 0.
         /// </summary>
-        public static float[] BuildSignTable(ReadOnlySpan<float> query, int bytes)
+        public static float[] BuildSignTable(ReadOnlySpan<float> query, int bytes, float[]? reuse = null)
         {
-            var table = new float[bytes * 256];
+            var table = reuse is not null && reuse.Length == bytes * 256 ? reuse : new float[bytes * 256];
             Span<float> r = stackalloc float[8];
             for (int c = 0; c < bytes; c++)
             {
@@ -223,11 +223,12 @@ namespace Hyperspace
         /// <summary>
         /// A table for ternary codes held as a non-zero plane and a sign plane (sign bits only where the non-zero bit is set), four dimensions
         /// per group: <c>table[g * 256 + (nz4 &lt;&lt; 4 | sign4)]</c> is the signed sum of the query over the non-zero dimensions of the group.
-        /// Only the 81 reachable <c>(nz, sign)</c> combinations of each group are filled in.
+        /// Only the 81 reachable <c>(nz, sign)</c> combinations of each group are filled in. Each builder takes the previous query's table to overwrite when the size matches.
         /// </summary>
-        public static float[] BuildTernaryTable(ReadOnlySpan<float> query, int groups)
+        public static float[] BuildTernaryTable(ReadOnlySpan<float> query, int groups, float[]? reuse = null)
         {
-            var table = new float[groups * 256];
+            // A reused table keeps stale values in the unreachable (sign not a subset of non-zero) slots, which are never read.
+            var table = reuse is not null && reuse.Length == groups * 256 ? reuse : new float[groups * 256];
             Span<float> r = stackalloc float[4];
             for (int g = 0; g < groups; g++)
             {

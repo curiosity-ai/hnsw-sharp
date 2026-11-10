@@ -8,6 +8,7 @@ namespace Hyperspace
     using System;
     using System.Buffers;
     using System.Collections.Generic;
+    using System.Collections.ObjectModel;
     using System.IO;
     using System.Runtime.InteropServices;
     using System.Text;
@@ -165,9 +166,9 @@ namespace Hyperspace
             writer.WriteBytes(parameters.WrittenSpan);
 
             long totalRecordInts = 0;
-            foreach (var node in _nodes)
+            for (int id = 0; id < _nodes.Count; id++)
             {
-                totalRecordInts += RecordLength(node);
+                totalRecordInts += RecordLength(id);
             }
 
             writer.WriteInt32(_nodes.Count);
@@ -178,22 +179,23 @@ namespace Hyperspace
             var offsets = new int[_options.MaxLayers + 1];
             for (int id = 0; id < _nodes.Count; id++)
             {
-                var links = _nodes[id].Links;
+                var node = _nodes[id];
+                int layers = node.Links.Length;
                 int total = 0;
-                for (int l = 0; l < links.Length; l++)
+                for (int l = 0; l < layers; l++)
                 {
                     offsets[l] = total;
-                    total += links[l].Length;
+                    total += l == 0 ? Layer0Of(id).Length : node.Counts[l];
                 }
 
-                offsets[links.Length] = total;
+                offsets[layers] = total;
                 writer.WriteInt32(id);
-                writer.WriteInt32(links.Length);
-                writer.WriteInt32(links.Length + 1 + total);
-                writer.WriteInt32Span(offsets.AsSpan(0, links.Length + 1));
-                foreach (var layer in links)
+                writer.WriteInt32(layers);
+                writer.WriteInt32(layers + 1 + total);
+                writer.WriteInt32Span(offsets.AsSpan(0, layers + 1));
+                for (int l = 0; l < layers; l++)
                 {
-                    writer.WriteInt32Span(layer);
+                    writer.WriteInt32Span(l == 0 ? Layer0Of(id) : node.Get(l));
                 }
             }
 
@@ -204,12 +206,13 @@ namespace Hyperspace
             }
         }
 
-        private static long RecordLength(Node node)
+        private long RecordLength(int id)
         {
+            var node = _nodes[id];
             long length = node.Links.Length + 1;
-            foreach (var l in node.Links)
+            for (int l = 0; l < node.Links.Length; l++)
             {
-                length += l.Length;
+                length += l == 0 ? Layer0Of(id).Length : node.Counts[l];
             }
 
             return length;
@@ -396,7 +399,7 @@ namespace Hyperspace
 
                 vectors.Add(index.EncodeForLoad(vector, out var normalized));
                 originals?.Add(normalized);
-                metadata.Add(CopyMetadata(items[i].Metadata));
+                metadata.Add(ToPlainDictionary(items[i].Metadata));
             }
 
             index.Populate(section, vectors, metadata, originals);
@@ -421,6 +424,22 @@ namespace Hyperspace
                 ? new MemoryStream(seg.Array, seg.Offset, seg.Count, writable: false)
                 : new MemoryStream(graph.ToArray(), writable: false);
             return DeserializeGraph(items, ms, tokenizer);
+        }
+
+        private static Dictionary<string, string>? ToPlainDictionary(IReadOnlyDictionary<string, string>? source)
+        {
+            if (source is null || source.Count == 0)
+            {
+                return null;
+            }
+
+            var copy = new Dictionary<string, string>(source.Count, StringComparer.Ordinal);
+            foreach (var kv in source)
+            {
+                copy[kv.Key] = kv.Value;
+            }
+
+            return copy;
         }
 
         private byte[] EncodeForLoad(float[] vector, out float[] normalized)
@@ -671,7 +690,7 @@ namespace Hyperspace
                     _originals!.Add(originals[i]);
                 }
 
-                var m = metadata[i];
+                var m = metadata[i] is { } loaded ? new ReadOnlyDictionary<string, string>(loaded) : null;
                 _metadata.Add(m);
                 if (m is not null && !_deleted.Contains(i))
                 {

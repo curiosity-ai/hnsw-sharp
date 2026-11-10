@@ -342,10 +342,13 @@ namespace Hyperspace
         }
 
         /// <summary>Precomputes the table of squared distances from the query to every centroid.</summary>
-        public LookupTable ComputeLookupTable(ReadOnlySpan<float> query)
+        public LookupTable ComputeLookupTable(ReadOnlySpan<float> query) => ComputeLookupTable(query, null);
+
+        /// <summary>Like <see cref="ComputeLookupTable(ReadOnlySpan{float})"/>, overwriting a table from a previous query instead of allocating one.</summary>
+        internal LookupTable ComputeLookupTable(ReadOnlySpan<float> query, LookupTable? reuse)
         {
             var work = Prepare(query);
-            var table = new float[NumSubvectors * 256];
+            var table = reuse is not null && reuse.Table.Length == NumSubvectors * 256 ? reuse.Table : new float[NumSubvectors * 256];
             int subDim = SubvectorDimension;
             for (int sub = 0; sub < NumSubvectors; sub++)
             {
@@ -365,12 +368,23 @@ namespace Hyperspace
                 }
             }
 
-            return new LookupTable(NumSubvectors, table);
+            return ReferenceEquals(reuse?.Table, table) ? reuse! : new LookupTable(NumSubvectors, table);
         }
 
-        private float[] Prepare(ReadOnlySpan<float> vector)
+        [ThreadStatic]
+        private static float[]? workScratch;
+
+        /// <summary>The vector, rotated for OPQ, in a reusable per-thread buffer (valid until the next call on this thread).</summary>
+        private Span<float> Prepare(ReadOnlySpan<float> vector)
         {
-            var work = new float[Dimension];
+            var buffer = workScratch;
+            if (buffer is null || buffer.Length < Dimension)
+            {
+                buffer = workScratch = new float[Math.Max(Dimension, 64)];
+            }
+
+            var work = buffer.AsSpan(0, Dimension);
+            work.Clear();
             vector.Slice(0, Math.Min(vector.Length, Dimension)).CopyTo(work);
             if (IsOpq)
             {
@@ -479,6 +493,8 @@ namespace Hyperspace
                 _table = table;
             }
 
+            internal float[] Table => _table;
+
             /// <summary>Gets the number of sub-vectors.</summary>
             public int NumSubvectors { get; }
 
@@ -528,12 +544,12 @@ namespace Hyperspace
 
         public override byte[] Encode(ReadOnlySpan<float> vector) => _pq.Encode(vector);
 
-        public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination) => _pq.Decode(stored).AsSpan(0, destination.Length).CopyTo(destination);
+        public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination) => _pq.DecodeInto(stored, destination, unrotate: true);
 
-        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var q = base.Prepare(query);
-            q.Lookup = _pq.ComputeLookupTable(query);
+            var q = base.Prepare(query, reuse);
+            q.Lookup = _pq.ComputeLookupTable(query, q.Lookup);
             return q;
         }
 

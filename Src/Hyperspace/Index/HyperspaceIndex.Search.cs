@@ -16,42 +16,100 @@ namespace Hyperspace
     {
         private readonly object _lexicalLock = new object();
 
+        /// <summary>The settings of a query that passed none; shared, never mutated.</summary>
+        private static readonly SearchOptions DefaultSearchOptions = new SearchOptions();
+
         /// <summary>Finds the <paramref name="k"/> items nearest to a query.</summary>
         /// <param name="query">The query embedding.</param>
         /// <param name="k">How many results to return.</param>
         /// <param name="options">Filters, hybrid text, candidate-list size...</param>
         /// <returns>The hits, nearest first. Fewer than <paramref name="k"/> if fewer items qualify.</returns>
+        /// <remarks>Apart from the returned array this does not allocate for an unfiltered, non-hybrid query; see <see cref="Search(ReadOnlySpan{float}, Span{SearchResult}, SearchOptions)"/> to avoid that too.</remarks>
         public SearchResult[] Search(ReadOnlySpan<float> query, int k, SearchOptions? options = null)
         {
-            options ??= new SearchOptions();
-            var prepared = PrepareQuery(query, k);
+            options ??= DefaultSearchOptions;
+            var prepared = PrepareQuery(query, k, pooled: true);
             int truncation = ResolveTruncation(options);
 
             EnterRead();
             try
             {
-                options.CancellationToken.ThrowIfCancellationRequested();
-                var allowed = BuildAllowed(options);
-                int ef = Math.Max(options.Ef ?? _options.EfSearch, k);
-
-                if (!string.IsNullOrWhiteSpace(options.HybridQuery))
-                {
-                    return Materialize(SearchHybridCore(prepared, k, ef, allowed, truncation, options), options.IncludeMetadata);
-                }
-
-                int oversample = EffectiveOversample(options);
-                int firstPass = oversample > 1 ? checked(k * oversample) : k;
-                var hits = SearchCore(prepared, firstPass, Math.Max(ef, firstPass), allowed, truncation, options.CancellationToken);
-                if (oversample > 1)
-                {
-                    hits = RerankExactly(hits, prepared, k);
-                }
-
-                return Materialize(hits.Select(h => (h.Id, h.Distance, (double?)null)), options.IncludeMetadata);
+                var hits = ExecuteSearch(prepared, k, truncation, options, out bool hybrid);
+                var results = new SearchResult[hits.Count];
+                FillResults(hits, hybrid, options.IncludeMetadata, results);
+                return results;
             }
             finally
             {
                 ExitRead();
+            }
+        }
+
+        /// <summary>
+        /// Finds the <c>results.Length</c> items nearest to a query and writes them, nearest first, into <paramref name="results"/>.
+        /// </summary>
+        /// <returns>The number of results written, which is smaller than <c>results.Length</c> if fewer items qualify.</returns>
+        /// <remarks>
+        /// A query without filters, hybrid text or a graph restriction allocates nothing once the calling thread has warmed up (its scratch
+        /// buffers and prepared query are reused). Filtered queries allocate the id sets they compute, and hybrid queries their rankings.
+        /// </remarks>
+        public int Search(ReadOnlySpan<float> query, Span<SearchResult> results, SearchOptions? options = null)
+        {
+            options ??= DefaultSearchOptions;
+            var prepared = PrepareQuery(query, results.Length, pooled: true);
+            int truncation = ResolveTruncation(options);
+
+            EnterRead();
+            try
+            {
+                var hits = ExecuteSearch(prepared, results.Length, truncation, options, out bool hybrid);
+                int count = Math.Min(hits.Count, results.Length);
+                FillResults(hits, hybrid, options.IncludeMetadata, results.Slice(0, count));
+                return count;
+            }
+            finally
+            {
+                ExitRead();
+            }
+        }
+
+        /// <summary>Runs a query under the read lock; the hits are in the calling thread's reusable list and valid until its next search.</summary>
+        private List<(int Id, double Distance)> ExecuteSearch(PreparedQuery prepared, int k, int truncation, SearchOptions options, out bool hybrid)
+        {
+            options.CancellationToken.ThrowIfCancellationRequested();
+            var allowed = BuildAllowed(options);
+            int ef = Math.Max(options.Ef ?? _options.EfSearch, k);
+            var hits = Scratch.Hits;
+
+            hybrid = !string.IsNullOrWhiteSpace(options.HybridQuery);
+            if (hybrid)
+            {
+                hits.Clear();
+                foreach (var (id, distance, _) in SearchHybridCore(prepared, k, ef, allowed, truncation, options))
+                {
+                    hits.Add((id, distance));
+                }
+
+                return hits;
+            }
+
+            int oversample = EffectiveOversample(options);
+            int firstPass = oversample > 1 ? checked(k * oversample) : k;
+            SearchCore(prepared, firstPass, Math.Max(ef, firstPass), allowed, truncation, options.CancellationToken, hits);
+            if (oversample > 1)
+            {
+                RerankExactly(hits, prepared, k);
+            }
+
+            return hits;
+        }
+
+        private void FillResults(List<(int Id, double Distance)> hits, bool hybrid, bool includeMetadata, Span<SearchResult> destination)
+        {
+            for (int i = 0; i < destination.Length; i++)
+            {
+                var (id, distance) = hits[i];
+                destination[i] = new SearchResult(id, distance, includeMetadata ? _metadata[id] : null, hybrid ? 10.0 - distance : null);
             }
         }
 
@@ -115,7 +173,7 @@ namespace Hyperspace
                 return Array.Empty<SearchResult>();
             }
 
-            var prepared = leaves.Select(l => PrepareQuery(l, k)).ToArray();
+            var prepared = leaves.Select(l => PrepareQuery(l, k, pooled: false)).ToArray();
             EnterRead();
             try
             {
@@ -145,9 +203,11 @@ namespace Hyperspace
                 else
                 {
                     int candidateK = Math.Max(k * 4, ef);
+                    var found = new List<(int Id, double Distance)>();
                     foreach (var p in prepared)
                     {
-                        foreach (var (id, _) in SearchCore(p, candidateK, Math.Max(ef, candidateK), allowed, 0, options.CancellationToken))
+                        SearchCore(p, candidateK, Math.Max(ef, candidateK), allowed, 0, options.CancellationToken, found);
+                        foreach (var (id, _) in found)
                         {
                             candidates.Add(id);
                         }
@@ -169,7 +229,14 @@ namespace Hyperspace
                 }
 
                 scored.Sort((a, b) => a.Distance.CompareTo(b.Distance));
-                return Materialize(scored.Take(k), options.IncludeMetadata);
+                var top = scored.Take(k).ToList();
+                var results = new SearchResult[top.Count];
+                for (int i = 0; i < results.Length; i++)
+                {
+                    results[i] = new SearchResult(top[i].Id, top[i].Distance, options.IncludeMetadata ? _metadata[top[i].Id] : null, top[i].Score);
+                }
+
+                return results;
             }
             finally
             {
@@ -180,27 +247,32 @@ namespace Hyperspace
         private int EffectiveOversample(SearchOptions options) => _originals is null ? 1 : Math.Max(1, options.RerankOversample ?? _options.RerankOversample);
 
         /// <summary>
-        /// The second pass of two-pass search: the candidates the (approximate) first pass collected are scored again with the exact metric
+        /// The second pass of two-pass search: the candidates the (approximate) first pass collected are scored again, in place, with the exact metric
         /// against the original vectors, and the best <paramref name="k"/> are kept.
         /// </summary>
-        private List<(int Id, double Distance)> RerankExactly(List<(int Id, double Distance)> candidates, PreparedQuery q, int k)
+        private void RerankExactly(List<(int Id, double Distance)> candidates, PreparedQuery q, int k)
         {
-            var exact = new List<(int Id, double Distance)>(candidates.Count);
-            foreach (var (id, _) in candidates)
+            for (int i = 0; i < candidates.Count; i++)
             {
-                exact.Add((id, Metrics.Distance(_options.Metric, (ReadOnlySpan<float>)_originals![id], q.Coords32)));
+                int id = candidates[i].Id;
+                candidates[i] = (id, Metrics.Distance(_options.Metric, (ReadOnlySpan<float>)_originals![id], q.Coords32));
             }
 
-            exact.Sort((a, b) => a.Distance.CompareTo(b.Distance));
-            if (exact.Count > k)
+            candidates.Sort(ByDistance);
+            if (candidates.Count > k)
             {
-                exact.RemoveRange(k, exact.Count - k);
+                candidates.RemoveRange(k, candidates.Count - k);
             }
-
-            return exact;
         }
 
-        private PreparedQuery PrepareQuery(ReadOnlySpan<float> query, int k)
+        [ThreadStatic]
+        private static float[]? queryBuffer;
+
+        /// <summary>
+        /// Validates, normalizes and prepares a query. A pooled query reuses the buffers of the previous search of this thread on this index
+        /// (it is only valid until that thread's next search); an unpooled one is independent, for callers that hold several at once.
+        /// </summary>
+        private PreparedQuery PrepareQuery(ReadOnlySpan<float> query, int k, bool pooled)
         {
             if (k <= 0)
             {
@@ -212,8 +284,7 @@ namespace Hyperspace
                 throw new ArgumentException($"Expected a query of {_options.Dimension} dimensions but got {query.Length}", nameof(query));
             }
 
-            var q = query.ToArray();
-            foreach (var x in q)
+            foreach (var x in query)
             {
                 if (!float.IsFinite(x))
                 {
@@ -221,12 +292,29 @@ namespace Hyperspace
                 }
             }
 
-            if (_options.ResolvedNormalize)
+            var buffer = queryBuffer;
+            if (buffer is null || buffer.Length < query.Length)
             {
-                Metrics.Normalize(q);
+                buffer = queryBuffer = new float[Math.Max(query.Length, 256)];
             }
 
-            return _codec.Prepare(q);
+            var work = buffer.AsSpan(0, query.Length);
+            query.CopyTo(work);
+            if (_options.ResolvedNormalize)
+            {
+                Metrics.Normalize(work);
+            }
+
+            if (!pooled)
+            {
+                return _codec.Prepare(work);
+            }
+
+            var scratch = Scratch;
+            var prepared = _codec.Prepare(work, ReferenceEquals(scratch.QueryOwner, _codec) ? scratch.Query : null);
+            scratch.Query = prepared;
+            scratch.QueryOwner = _codec;
+            return prepared;
         }
 
         private int ResolveTruncation(SearchOptions options)
@@ -249,31 +337,14 @@ namespace Hyperspace
             return t == _options.Dimension ? 0 : t;
         }
 
-        private SearchResult[] Materialize(IEnumerable<(int Id, double Distance, double? Score)> hits, bool includeMetadata)
-        {
-            var list = new List<SearchResult>();
-            foreach (var (id, distance, score) in hits)
-            {
-                IReadOnlyDictionary<string, string>? meta = null;
-                if (includeMetadata && _metadata[id] is { } m)
-                {
-                    meta = new Dictionary<string, string>(m);
-                }
-
-                list.Add(new SearchResult(id, distance, meta, score));
-            }
-
-            return list.ToArray();
-        }
-
         // ------------------------------------------------------------------ core ANN search
 
-        private List<(int Id, double Distance)> SearchCore(PreparedQuery q, int k, int ef, IdSet? allowed, int truncation, CancellationToken ct)
+        private void SearchCore(PreparedQuery q, int k, int ef, IdSet? allowed, int truncation, CancellationToken ct, List<(int Id, double Distance)> output)
         {
-            var empty = new List<(int, double)>();
+            output.Clear();
             if (_entryPoint < 0 || _vectors.Count - _deletedCount == 0)
             {
-                return empty;
+                return;
             }
 
             ef = Math.Max(ef, k);
@@ -282,12 +353,13 @@ namespace Hyperspace
                 int count = allowed.Count;
                 if (count == 0)
                 {
-                    return empty;
+                    return;
                 }
 
                 if (count <= FilteredBruteForceThreshold(_vectors.Count, ef))
                 {
-                    return BruteForce(q, k, allowed, truncation, ct);
+                    output.AddRange(BruteForce(q, k, allowed, truncation, ct));
+                    return;
                 }
             }
 
@@ -312,24 +384,23 @@ namespace Hyperspace
                 }
             }
 
-            Func<int, bool> isValid = allowed is not null
-                ? allowed.Contains
-                : _deletedCount > 0 ? id => !_deleted.Contains(id) : static _ => true;
-            return SearchLayer0(current, q, k, ef, isValid, truncation, ct);
+            SearchLayer0(current, q, k, ef, allowed, truncation, ct, output);
         }
 
-        private List<(int Id, double Distance)> SearchLayer0(int entry, PreparedQuery q, int k, int ef, Func<int, bool> isValid, int truncation, CancellationToken ct)
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private bool IsAllowed(int id, IdSet? allowed) => allowed is not null ? allowed.Contains(id) : _deletedCount == 0 || !_deleted.Contains(id);
+
+        private void SearchLayer0(int entry, PreparedQuery q, int k, int ef, IdSet? allowed, int truncation, CancellationToken ct, List<(int Id, double Distance)> output)
         {
             var s = Scratch;
             s.Begin(_nodes.Count);
             var candidates = s.Candidates;
             var results = s.Results;
-            var flat = _flat;
 
             double d0 = Dist(entry, q, truncation);
             s.Visit(entry);
             candidates.Enqueue(entry, d0);
-            if (isValid(entry))
+            if (IsAllowed(entry, allowed))
             {
                 results.Enqueue(entry, -d0);
             }
@@ -347,8 +418,7 @@ namespace Hyperspace
                     ct.ThrowIfCancellationRequested();
                 }
 
-                ReadOnlySpan<int> links = flat is not null ? flat.Of(c) : _nodes[c].Links[0];
-                foreach (int nb in links)
+                foreach (int nb in Layer0Of(c))
                 {
                     if (!s.Visit(nb))
                     {
@@ -362,7 +432,7 @@ namespace Hyperspace
                     }
 
                     candidates.Enqueue(nb, d);
-                    if (isValid(nb))
+                    if (IsAllowed(nb, allowed))
                     {
                         results.Enqueue(nb, -d);
                         if (results.Count > ef)
@@ -373,7 +443,6 @@ namespace Hyperspace
                 }
             }
 
-            var output = new List<(int, double)>(results.Count);
             while (results.TryDequeue(out int id, out double nd))
             {
                 output.Add((id, -nd));
@@ -384,8 +453,6 @@ namespace Hyperspace
             {
                 output.RemoveRange(k, output.Count - k);
             }
-
-            return output;
         }
 
         /// <summary>
@@ -523,10 +590,11 @@ namespace Hyperspace
             }
 
             int vectorK = Math.Max(k * 10, 100);
-            var vectorHits = SearchCore(q, vectorK, Math.Max(ef, vectorK), allowed, truncation, o.CancellationToken);
+            var vectorHits = new List<(int Id, double Distance)>();
+            SearchCore(q, vectorK, Math.Max(ef, vectorK), allowed, truncation, o.CancellationToken, vectorHits);
             if (EffectiveOversample(o) > 1)
             {
-                vectorHits = RerankExactly(vectorHits, q, vectorHits.Count);
+                RerankExactly(vectorHits, q, vectorHits.Count);
             }
 
             var tokens = CreateTokenizerFunction()(o.HybridQuery!);
@@ -719,7 +787,7 @@ namespace Hyperspace
                     coords[i] = floats[i];
                 }
 
-                if (expr.Check(coords, _metadata[id] ?? noMetadata))
+                if (expr.Check(coords, _metadata[id] ?? (IReadOnlyDictionary<string, string>)noMetadata))
                 {
                     result.Add(id);
                 }

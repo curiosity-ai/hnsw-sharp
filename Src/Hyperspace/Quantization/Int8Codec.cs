@@ -57,7 +57,7 @@ namespace Hyperspace
             }
 
             double inv = 127.0 / scale;
-            var q = new sbyte[n];
+            var q = MemoryMarshal.Cast<byte, sbyte>(bytes.AsSpan(0, n));
             for (int i = 0; i < n; i++)
             {
                 q[i] = (sbyte)Math.Clamp(Math.Round(vector[i] * inv, MidpointRounding.AwayFromZero), -127.0, 127.0);
@@ -68,18 +68,13 @@ namespace Hyperspace
                 RefineAnisotropic(vector, q);
             }
 
-            for (int i = 0; i < n; i++)
-            {
-                bytes[i] = (byte)q[i];
-            }
-
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(n, 4), (float)scale);
             double alpha = _fixedScale ? Metrics.ConformalAlpha(vector) : 1.0;
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(n + 4, 4), (float)alpha);
             return bytes;
         }
 
-        private static void RefineAnisotropic(ReadOnlySpan<float> v, sbyte[] q)
+        private static void RefineAnisotropic(ReadOnlySpan<float> v, Span<sbyte> q)
         {
             int n = q.Length;
             double norm = 0;
@@ -96,7 +91,7 @@ namespace Hyperspace
 
             const double tWeight = 10.0;
             double invNorm = 1.0 / norm;
-            var f = new double[n];
+            Span<double> f = stackalloc double[n];   // n is at most 128 here
             double dotErrX = 0, sqErr = 0;
             for (int i = 0; i < n; i++)
             {

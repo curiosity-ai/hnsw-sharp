@@ -7,6 +7,7 @@ namespace Hyperspace
 {
     using System;
     using System.Collections.Generic;
+    using System.Runtime.InteropServices;
 
     public sealed partial class HyperspaceIndex
     {
@@ -19,6 +20,28 @@ namespace Hyperspace
             public PriorityQueue<int, double> Candidates { get; } = new PriorityQueue<int, double>();
 
             public PriorityQueue<int, double> Results { get; } = new PriorityQueue<int, double>();
+
+            /// <summary>Output of a layer search during construction.</summary>
+            public List<(int Id, double Distance)> Found { get; } = new List<(int, double)>();
+
+            /// <summary>Output of the neighbour-selection heuristic.</summary>
+            public List<int> Chosen { get; } = new List<int>();
+
+            /// <summary>Pruning runs while <see cref="Chosen"/> is being walked, so it gets its own lists.</summary>
+            public List<(int Id, double Distance)> PruneCandidates { get; } = new List<(int, double)>();
+
+            public List<int> PruneChosen { get; } = new List<int>();
+
+            /// <summary>Hits of a query, nearest first.</summary>
+            public List<(int Id, double Distance)> Hits { get; } = new List<(int, double)>();
+
+            /// <summary>The hits again, for the exact re-ranking pass.</summary>
+            public List<(int Id, double Distance)> Reranked { get; } = new List<(int, double)>();
+
+            /// <summary>A prepared query whose buffers are reused by every search of this thread on <see cref="QueryOwner"/>.</summary>
+            public PreparedQuery? Query { get; set; }
+
+            public object? QueryOwner { get; set; }
 
             /// <summary>Starts a new traversal: a fresh epoch makes every mark stale without clearing the array.</summary>
             public void Begin(int nodeCount)
@@ -57,7 +80,18 @@ namespace Hyperspace
 
         private static SearchScratch Scratch => scratch ??= new SearchScratch();
 
-        private double Dist(int id, PreparedQuery q, int truncation = 0) => _codec.Distance(_vectors[id], q, truncation);
+#if DIAG
+        [ThreadStatic]
+        internal static long DiagEvaluations;
+#endif
+
+        private double Dist(int id, PreparedQuery q, int truncation = 0)
+        {
+#if DIAG
+            DiagEvaluations++;
+#endif
+            return _codec.Distance(_vectors[id], q, truncation);
+        }
 
         private double UpperDist(int id, PreparedQuery q) => _codec.UpperDistance(_vectors[id], q);
 
@@ -65,7 +99,9 @@ namespace Hyperspace
 
         // ------------------------------------------------------------------ insertion
 
-        /// <summary>Wires a node (whose vector is already stored) into the graph. Must hold the write lock.</summary>
+        private static readonly Comparison<(int Id, double Distance)> ByDistance = static (a, b) => a.Distance.CompareTo(b.Distance);
+
+        /// <summary>Wires a node (whose vector is already stored) into the graph. Must hold the write lock, with layer 0 thawed.</summary>
         private void ConnectNode(int id, PreparedQuery q)
         {
             var node = _nodes[id];
@@ -88,8 +124,7 @@ namespace Hyperspace
                 while (changed)
                 {
                     changed = false;
-                    var links = LinksOf(current, l);
-                    foreach (var nb in links)
+                    foreach (int nb in LinksOf(current, l))
                     {
                         if (nb == id)
                         {
@@ -108,19 +143,21 @@ namespace Hyperspace
             }
 
             // Phase 2: from the node's top layer down, find candidates, pick diverse neighbours and link both ways.
+            var scratch = Scratch;
             int mBase = _options.M;
             for (int l = Math.Min(level, _maxLevel); l >= 0; l--)
             {
                 int mMax = l == 0 ? mBase * 2 : mBase;
                 var candidates = SearchLayerForBuild(current, q, l, _options.EfConstruction, id);
-                var selected = SelectNeighbors(candidates, mMax);
-                node.Links[l] = selected;
+                SelectNeighbors(candidates, mMax, scratch.Chosen);
+                node.Set(l, CollectionsMarshal.AsSpan(scratch.Chosen));
 
+                var selected = node.Get(l);
                 foreach (int nb in selected)
                 {
                     AddLink(nb, id, l);
                     var nbNode = _nodes[nb];
-                    if (l < nbNode.Links.Length && nbNode.Links[l].Length > Math.Max(mMax * 5 / 4, mMax + 2))
+                    if (l < nbNode.Links.Length && nbNode.Counts[l] > Math.Max(mMax * 5 / 4, mMax + 2))
                     {
                         PruneConnections(nb, l, mMax);
                     }
@@ -139,13 +176,22 @@ namespace Hyperspace
             }
         }
 
-        private int[] LinksOf(int node, int layer)
+        /// <summary>The links of a node on a layer. Layer 0 comes from the flat arrays while they exist.</summary>
+        private ReadOnlySpan<int> LinksOf(int node, int layer)
         {
-            var links = _nodes[node].Links;
-            return layer < links.Length ? links[layer] : Array.Empty<int>();
+            if (layer == 0)
+            {
+                return Layer0Of(node);
+            }
+
+            var n = _nodes[node];
+            return layer < n.Links.Length ? n.Get(layer) : ReadOnlySpan<int>.Empty;
         }
 
-        /// <summary>Best-first search on one layer returning up to <paramref name="ef"/> candidates, nearest first. Deleted nodes are traversed and returned.</summary>
+        /// <summary>
+        /// Best-first search on one layer returning up to <paramref name="ef"/> candidates, nearest first, in the thread's reusable list (valid until
+        /// the next call). Deleted nodes are traversed and returned.
+        /// </summary>
         private List<(int Id, double Distance)> SearchLayerForBuild(int entry, PreparedQuery q, int layer, int ef, int exclude)
         {
             var s = Scratch;
@@ -189,21 +235,23 @@ namespace Hyperspace
                 }
             }
 
-            var list = new List<(int, double)>(results.Count);
+            var found = s.Found;
+            found.Clear();
             while (results.TryDequeue(out int id, out double nd))
             {
-                list.Add((id, -nd));
+                found.Add((id, -nd));
             }
 
-            list.Reverse();
-            return list;
+            found.Reverse();
+            return found;
         }
 
         /// <summary>
         /// The HNSW neighbour-selection heuristic: walking the candidates nearest first, keep one only if it is closer to the query
         /// than to every neighbour already kept, so links spread over different directions instead of crowding one cluster.
+        /// The kept ids replace the contents of <paramref name="chosen"/>.
         /// </summary>
-        private int[] SelectNeighbors(List<(int Id, double Distance)> candidates, int m)
+        private void SelectNeighbors(List<(int Id, double Distance)> candidates, int m, List<int> chosen)
         {
             int actualM = m;
             if (_options.DensityPruning && candidates.Count > 0)
@@ -221,7 +269,7 @@ namespace Hyperspace
                 }
             }
 
-            var chosen = new List<int>(actualM);
+            chosen.Clear();
             foreach (var (id, dist) in candidates)
             {
                 if (chosen.Count >= actualM)
@@ -244,41 +292,33 @@ namespace Hyperspace
                     chosen.Add(id);
                 }
             }
-
-            return chosen.ToArray();
         }
 
         private void AddLink(int source, int target, int layer)
         {
             var node = _nodes[source];
-            if (layer >= node.Links.Length)
+            if (layer >= node.Links.Length || node.Contains(layer, target))
             {
                 return;
             }
 
-            var links = node.Links[layer];
-            if (Array.IndexOf(links, target) >= 0)
-            {
-                return;
-            }
-
-            var grown = new int[links.Length + 1];
-            links.CopyTo(grown, 0);
-            grown[^1] = target;
-            node.Links[layer] = grown;
+            node.Add(layer, target);
         }
 
         private void PruneConnections(int id, int layer, int maxLinks)
         {
-            var links = _nodes[id].Links[layer];
-            var candidates = new List<(int Id, double Distance)>(links.Length);
-            foreach (int n in links)
+            var s = Scratch;
+            var node = _nodes[id];
+            var candidates = s.PruneCandidates;
+            candidates.Clear();
+            foreach (int n in node.Get(layer))
             {
                 candidates.Add((n, Pair(id, n)));
             }
 
-            candidates.Sort((a, b) => a.Distance.CompareTo(b.Distance));
-            _nodes[id].Links[layer] = SelectNeighbors(candidates, maxLinks);
+            candidates.Sort(ByDistance);
+            SelectNeighbors(candidates, maxLinks, s.PruneChosen);
+            node.Set(layer, CollectionsMarshal.AsSpan(s.PruneChosen));
         }
 
         // ------------------------------------------------------------------ DiskANN / Vamana pruning
@@ -299,14 +339,15 @@ namespace Hyperspace
             EnterWrite();
             try
             {
+                ThawLayer0();
                 int maxDegree = _options.M;
                 var rewritten = new int[_nodes.Count][];
                 for (int i = 0; i < _nodes.Count; i++)
                 {
-                    var links = _nodes[i].Links[0];
+                    var links = _nodes[i].Get(0);
                     if (links.Length == 0)
                     {
-                        rewritten[i] = links;
+                        rewritten[i] = Array.Empty<int>();
                         continue;
                     }
 
@@ -319,7 +360,7 @@ namespace Hyperspace
                         }
                     }
 
-                    sorted.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+                    sorted.Sort(ByDistance);
                     var kept = new List<int>(maxDegree);
                     foreach (var (c, cd) in sorted)
                     {
@@ -349,10 +390,8 @@ namespace Hyperspace
 
                 for (int i = 0; i < _nodes.Count; i++)
                 {
-                    _nodes[i].Links[0] = rewritten[i];
+                    _nodes[i].Set(0, rewritten[i]);
                 }
-
-                _flat = null;
             }
             finally
             {

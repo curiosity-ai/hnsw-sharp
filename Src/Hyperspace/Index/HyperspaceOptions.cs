@@ -182,7 +182,7 @@ namespace Hyperspace
     /// <param name="Relations">Follow only edges of these relations, or all if <c>null</c>.</param>
     public sealed record GraphFilter(IReadOnlyList<uint> Seeds, int Hops = 1, IReadOnlyCollection<ushort>? Relations = null);
 
-    /// <summary>Per-query settings of <see cref="HyperspaceIndex.Search"/>.</summary>
+    /// <summary>Per-query settings of <see cref="HyperspaceIndex.Search(ReadOnlySpan{float}, int, SearchOptions)"/>.</summary>
     public sealed class SearchOptions
     {
         /// <summary>Gets or sets the size of the candidate list; the index default when <c>null</c>. Always at least <c>k</c>.</summary>

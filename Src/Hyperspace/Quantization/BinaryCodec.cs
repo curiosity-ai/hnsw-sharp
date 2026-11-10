@@ -31,7 +31,9 @@ namespace Hyperspace
 
         public override byte[] Encode(ReadOnlySpan<float> vector)
         {
-            var rotated = TurboRotation.Rotated(vector);
+            var rotated = ScratchFloats(Dimension);
+            vector.CopyTo(rotated);
+            TurboRotation.Rotate(rotated);
             var bytes = new byte[EncodedLength];
             for (int i = 0; i < Dimension; i++)
             {
@@ -58,7 +60,7 @@ namespace Hyperspace
         public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination)
         {
             // The sign pattern, un-rotated, scaled to unit norm: the direction the bits describe.
-            var v = new float[Dimension];
+            var v = ScratchFloats(Dimension);
             float s = 1.0f / MathF.Sqrt(Dimension);
             for (int i = 0; i < Dimension; i++)
             {
@@ -66,14 +68,17 @@ namespace Hyperspace
             }
 
             TurboRotation.Unrotate(v);
-            v.AsSpan(0, destination.Length).CopyTo(destination);
+            v.Slice(0, destination.Length).CopyTo(destination);
         }
 
-        public override PreparedQuery Prepare(ReadOnlySpan<float> query)
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
         {
-            var q = base.Prepare(query);
-            q.Rotated = TurboRotation.Rotated(query);
-            q.Table = QuantSimd.BuildSignTable(q.Rotated, BitBytes);
+            var q = base.Prepare(query, reuse);
+            var rotated = q.Rotated is { } r && r.Length == query.Length ? r : new float[query.Length];
+            query.CopyTo(rotated);
+            TurboRotation.Rotate(rotated);
+            q.Rotated = rotated;
+            q.Table = QuantSimd.BuildSignTable(rotated, BitBytes, q.Table);
             return q;
         }
 
