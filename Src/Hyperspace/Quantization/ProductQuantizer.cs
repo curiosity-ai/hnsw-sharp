@@ -21,6 +21,8 @@ namespace Hyperspace
         public static readonly byte[] Magic = { (byte)'P', (byte)'Q', (byte)'C', (byte)'B' };
 
         private readonly float[] _centroids;
+        private float[]? _symmetric;
+        private int _version;
 
         /// <summary>Initializes a new instance of the <see cref="ProductQuantizer"/> class with deterministic pseudo-Gaussian codebooks.</summary>
         /// <param name="dimension">The vector dimension.</param>
@@ -105,6 +107,8 @@ namespace Hyperspace
         /// <summary>Trains the codebooks with Lloyd's k-means on each sub-space, seeded with k-means++.</summary>
         public void Train(IReadOnlyList<float[]> samples, int iterations = 10)
         {
+            System.Threading.Interlocked.Increment(ref _version);
+            _symmetric = null;
             if (samples.Count == 0)
             {
                 return;
@@ -341,6 +345,60 @@ namespace Hyperspace
             }
         }
 
+        /// <summary>The largest symmetric table that is built (bytes); a quantizer with more sub-vectors falls back to decoding.</summary>
+        private const long MaxSymmetricTableBytes = 64L * 1024 * 1024;
+
+        /// <summary>
+        /// The table of squared distances between every pair of centroids of every sub-quantizer, <c>NumSubvectors * 65536</c> floats:
+        /// the distance between two encoded vectors is then one lookup per sub-vector (symmetric distance computation). Built on first use and
+        /// rebuilt after training; <c>null</c> if it would exceed <see cref="MaxSymmetricTableBytes"/>. Padding dimensions past the end of the vector are ignored,
+        /// as when decoding.
+        /// </summary>
+        internal float[]? SymmetricTable
+        {
+            get
+            {
+                var table = _symmetric;
+                if (table is not null)
+                {
+                    return table;
+                }
+
+                if ((long)NumSubvectors * 65536 * sizeof(float) > MaxSymmetricTableBytes)
+                {
+                    return null;
+                }
+
+                table = new float[NumSubvectors * 65536];
+                int subDim = SubvectorDimension;
+                Parallel.For(0, NumSubvectors, sub =>
+                {
+                    int used = Math.Min(subDim, Dimension - (sub * subDim));
+                    int baseIndex = sub * 65536;
+                    for (int a = 0; a < 256; a++)
+                    {
+                        var ca = Centroid(sub, a);
+                        for (int b = a; b < 256; b++)
+                        {
+                            var cb = Centroid(sub, b);
+                            float dist = 0;
+                            for (int d = 0; d < used; d++)
+                            {
+                                float diff = ca[d] - cb[d];
+                                dist += diff * diff;
+                            }
+
+                            table[baseIndex + (a << 8) + b] = dist;
+                            table[baseIndex + (b << 8) + a] = dist;
+                        }
+                    }
+                });
+
+                _symmetric = table;
+                return table;
+            }
+        }
+
         /// <summary>Precomputes the table of squared distances from the query to every centroid.</summary>
         public LookupTable ComputeLookupTable(ReadOnlySpan<float> query) => ComputeLookupTable(query, null);
 
@@ -537,6 +595,25 @@ namespace Hyperspace
         public ProductQuantizer Quantizer => _pq;
 
         public override DistanceMetric PairMetric => DistanceMetric.L2;
+
+        /// <summary>One symmetric-table lookup per sub-vector instead of decoding both vectors.</summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            var table = _pq.SymmetricTable;
+            if (table is null)
+            {
+                return base.PairDistance(a, b);
+            }
+
+            int m = Math.Min(Math.Min(a.Length, b.Length), _pq.NumSubvectors);
+            float sum = 0;
+            for (int i = 0; i < m; i++)
+            {
+                sum += table[(i << 16) + (a[i] << 8) + b[i]];
+            }
+
+            return sum;
+        }
 
         protected override void DecodeForPair(ReadOnlySpan<byte> stored, Span<float> destination) => _pq.DecodeInto(stored, destination, unrotate: false);
 

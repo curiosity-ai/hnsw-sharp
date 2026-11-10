@@ -123,6 +123,83 @@ namespace Hyperspace.Tests
             }
         }
 
+        [TestMethod]
+        [DataRow(QuantizationMode.ScalarInt8, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.Dot)]
+        [DataRow(QuantizationMode.Turbo, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.Turbo, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.Turbo, DistanceMetric.Dot)]
+        [DataRow(QuantizationMode.Ternary, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.Ternary, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.Ternary, DistanceMetric.Dot)]
+        [DataRow(QuantizationMode.Binary, DistanceMetric.Cosine)]
+        [DataRow(QuantizationMode.ProductQuantization, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.OPQ, DistanceMetric.L2)]
+        [DataRow(QuantizationMode.ScalarInt4, DistanceMetric.Poincare)]
+        [DataRow(QuantizationMode.Ternary, DistanceMetric.Angular)]
+        public void PairDistancesMatchDecodeThenMetric(QuantizationMode mode, DistanceMetric metric)
+        {
+            var r = new Random(((int)mode * 17) + (int)metric);
+            foreach (var (dim, head) in new[] { (3, 0), (8, 0), (16, 0), (37, 0), (64, 0), (100, 0), (129, 0), (129, 33), (200, 33), (257, 0) })
+            {
+                var o = Options(mode, metric, dim, head);
+                var codec = VectorCodec.Create(o);
+                if (codec is ProductQuantizationCodec pqCodec)
+                {
+                    pqCodec.Quantizer.Train(Enumerable.Range(0, 400).Select(_ => Unit(r, dim)).ToList(), 2);
+                }
+
+                var x = new float[dim];
+                var y = new float[dim];
+                for (int trial = 0; trial < 15; trial++)
+                {
+                    var a = Unit(r, dim, ball: metric == DistanceMetric.Poincare);
+                    var b = Unit(r, dim, ball: metric == DistanceMetric.Poincare);
+                    if (trial == 0)
+                    {
+                        b = (float[])a.Clone();         // identical codes
+                    }
+                    else if (trial == 1)
+                    {
+                        b = new float[dim];             // an all-zero vector: zero scales and norms
+                    }
+
+                    var sa = codec.Encode(a);
+                    var sb = codec.Encode(b);
+                    codec.Decode(sa, x);
+                    codec.Decode(sb, y);
+                    double expected = Metrics.Distance(codec.PairMetric, (ReadOnlySpan<float>)x, y);
+                    double actual = codec.PairDistance(sa, sb);
+                    Assert.AreEqual(expected, actual, 3e-3 * Math.Max(1.0, Math.Abs(expected)), $"{mode}/{metric} dim {dim} head {head} trial {trial}");
+                    Assert.AreEqual(actual, codec.PairDistance(sb, sa), 1e-5 * Math.Max(1.0, Math.Abs(actual)), "symmetric");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void SymmetricProductTableIsRebuiltAfterTraining()
+        {
+            var r = new Random(5);
+            var pq = new ProductQuantizer(32, 4, isOpq: false);
+            var codec = new ProductQuantizationCodec(32, DistanceMetric.L2, pq);
+            var a = codec.Encode(Unit(r, 32));
+            var b = codec.Encode(Unit(r, 32));
+            double before = codec.PairDistance(a, b);
+            Assert.IsNotNull(pq.SymmetricTable);
+
+            pq.Train(Enumerable.Range(0, 600).Select(_ => Unit(r, 32)).ToList(), 3);
+            var a2 = codec.Encode(Unit(r, 32));
+            var b2 = codec.Encode(Unit(r, 32));
+            var x = new float[32];
+            var y = new float[32];
+            codec.Decode(a2, x);
+            codec.Decode(b2, y);
+            Assert.AreEqual(Metrics.Distance(DistanceMetric.L2, (ReadOnlySpan<float>)x, y), codec.PairDistance(a2, b2), 1e-4, "a stale table would answer for the old codebooks");
+            Assert.IsTrue(before >= 0);
+        }
+
         private static double Reference(QuantizationMode mode, DistanceMetric metric, float[] decoded, float[] q)
         {
             double dot = 0, nd = 0, nq = 0, l2 = 0;

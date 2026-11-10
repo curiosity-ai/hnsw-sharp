@@ -35,6 +35,23 @@ namespace Hyperspace
 
         private readonly int _head;
 
+        /// <summary>CentroidProducts[i * 16 + j] is the product of centroids i and j.</summary>
+        private static readonly float[] CentroidProducts = BuildCentroidProducts();
+
+        private static float[] BuildCentroidProducts()
+        {
+            var t = new float[256];
+            for (int i = 0; i < 16; i++)
+            {
+                for (int j = 0; j < 16; j++)
+                {
+                    t[(i * 16) + j] = (float)(Centroids[i] * Centroids[j]);
+                }
+            }
+
+            return t;
+        }
+
         private static float[] BuildPairSquares()
         {
             var t = new float[256];
@@ -172,6 +189,62 @@ namespace Hyperspace
                 int bin = (i & 1) == 1 ? packed & 0x0F : packed >> 4;
                 output[_head + i] = Centroids[bin] * scale;
             }
+        }
+
+        /// <summary>
+        /// Squared L2 (or 1 - dot) between two TurboQuant vectors from the nibbles, without decoding: with tail scales sa, sb,
+        /// <c>|a - b|^2 = sa^2 sum(ca^2) + sb^2 sum(cb^2) - 2 sa sb sum(ca cb)</c>, each sum a table lookup per byte (the squares per byte, the products per nibble pair).
+        /// </summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            if (Metric is not (DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot))
+            {
+                return base.PairDistance(a, b);
+            }
+
+            double headL2 = 0, headDot = 0;
+            for (int i = 0; i < _head; i++)
+            {
+                double x = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(8 + (i * 4), 4));
+                double y = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(8 + (i * 4), 4));
+                headL2 += (x - y) * (x - y);
+                headDot += x * y;
+            }
+
+            int tailDim = TailDim;
+            double normA = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(0, 4));
+            double normB = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(0, 4));
+            double sa = tailDim == 0 || normA < 1e-9 ? 0.0 : (normA / Math.Sqrt(tailDim)) * BiasCorrection;
+            double sb = tailDim == 0 || normB < 1e-9 ? 0.0 : (normB / Math.Sqrt(tailDim)) * BiasCorrection;
+
+            int packedOffset = 8 + (_head * 4);
+            int pairs = tailDim / 2;
+            float squaresA = 0, squaresB = 0, products = 0;
+            for (int p = 0; p < pairs; p++)
+            {
+                byte x = a[packedOffset + p], y = b[packedOffset + p];
+                squaresA += PairSquares[x];
+                squaresB += PairSquares[y];
+                products += CentroidProducts[((x >> 4) << 4) + (y >> 4)] + CentroidProducts[((x & 15) << 4) + (y & 15)];
+            }
+
+            double sqA = squaresA, sqB = squaresB, prod = products;
+            if ((tailDim & 1) == 1)
+            {
+                // The unused low nibble of the last byte is not a coordinate.
+                double ca = Centroids[a[packedOffset + pairs] >> 4], cb = Centroids[b[packedOffset + pairs] >> 4];
+                sqA += ca * ca;
+                sqB += cb * cb;
+                prod += ca * cb;
+            }
+
+            double tailDot = sa * sb * prod;
+            if (Metric == DistanceMetric.Dot)
+            {
+                return 1.0 - (headDot + tailDot);
+            }
+
+            return headL2 + Math.Max((sa * sa * sqA) + (sb * sb * sqB) - (2.0 * tailDot), 0.0);
         }
 
         protected override void DecodeForPair(ReadOnlySpan<byte> stored, Span<float> destination)

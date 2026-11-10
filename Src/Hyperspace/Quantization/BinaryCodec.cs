@@ -7,6 +7,8 @@ namespace Hyperspace
 {
     using System;
     using System.Buffers.Binary;
+    using System.Numerics;
+    using System.Runtime.InteropServices;
 
     /// <summary>
     /// One sign bit per dimension of the rotated vector. Layout: <c>byte[ceil(dim/8)] | float alpha</c>.
@@ -46,6 +48,30 @@ namespace Hyperspace
             double alpha = Metric == DistanceMetric.Poincare ? Metrics.ConformalAlpha(vector) : 1.0;
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(BitBytes, 4), (float)alpha);
             return bytes;
+        }
+
+        /// <summary>
+        /// Two decoded vectors are unit vectors with components +-1/sqrt(d), so their squared distance is 4 h / d where h is the number of
+        /// differing signs: a popcount of the XOR of the codes instead of decoding both.
+        /// </summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            int bytes = BitBytes;
+            int wide = bytes & ~7;
+            var ua = MemoryMarshal.Cast<byte, ulong>(a.Slice(0, wide));
+            var ub = MemoryMarshal.Cast<byte, ulong>(b.Slice(0, wide));
+            int differing = 0;
+            for (int i = 0; i < ua.Length; i++)
+            {
+                differing += BitOperations.PopCount(ua[i] ^ ub[i]);
+            }
+
+            for (int i = wide; i < bytes; i++)
+            {
+                differing += BitOperations.PopCount((uint)(a[i] ^ b[i]));
+            }
+
+            return 4.0 * differing / Dimension;
         }
 
         protected override void DecodeForPair(ReadOnlySpan<byte> stored, Span<float> destination)

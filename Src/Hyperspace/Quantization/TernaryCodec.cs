@@ -8,6 +8,7 @@ namespace Hyperspace
     using System;
     using System.Buffers.Binary;
     using System.Numerics;
+    using System.Runtime.InteropServices;
 
     /// <summary>
     /// 1.58-bit BitNet ternary quantization. Layout: <c>float[head] | byte[ceil(tail/8)] nonZero | byte[ceil(tail/8)] sign | float scale | float alpha</c>.
@@ -133,6 +134,68 @@ namespace Hyperspace
                     output[_head + i] = tail[i];
                 }
             }
+        }
+
+        /// <summary>
+        /// Squared L2 (or 1 - dot) between two ternary vectors from the bit planes alone: with scales sa, sb and counts of non-zeros na, nb,
+        /// <c>|a - b|^2 = sa^2 na + sb^2 nb - 2 sa sb D</c>, where D (agreeing minus disagreeing non-zero signs) is two popcounts per word.
+        /// The float head, if any, is compared directly.
+        /// </summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            if (Metric is not (DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot))
+            {
+                return base.PairDistance(a, b);
+            }
+
+            double headL2 = 0, headDot = 0;
+            for (int i = 0; i < _head; i++)
+            {
+                double x = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(i * 4, 4));
+                double y = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(i * 4, 4));
+                headL2 += (x - y) * (x - y);
+                headDot += x * y;
+            }
+
+            int nzOffset = _head * 4;
+            int signOffset = nzOffset + PlaneBytes;
+            double sa = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(signOffset + PlaneBytes, 4));
+            double sb = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(signOffset + PlaneBytes, 4));
+
+            int wide = PlaneBytes & ~7;
+            var nzA = MemoryMarshal.Cast<byte, ulong>(a.Slice(nzOffset, wide));
+            var nzB = MemoryMarshal.Cast<byte, ulong>(b.Slice(nzOffset, wide));
+            var sgA = MemoryMarshal.Cast<byte, ulong>(a.Slice(signOffset, wide));
+            var sgB = MemoryMarshal.Cast<byte, ulong>(b.Slice(signOffset, wide));
+            int countA = 0, countB = 0, agree = 0, disagree = 0;
+            for (int i = 0; i < nzA.Length; i++)
+            {
+                countA += BitOperations.PopCount(nzA[i]);
+                countB += BitOperations.PopCount(nzB[i]);
+                ulong both = nzA[i] & nzB[i];
+                ulong differ = both & (sgA[i] ^ sgB[i]);
+                disagree += BitOperations.PopCount(differ);
+                agree += BitOperations.PopCount(both & ~differ);
+            }
+
+            for (int i = wide; i < PlaneBytes; i++)
+            {
+                byte na = a[nzOffset + i], nb = b[nzOffset + i];
+                countA += BitOperations.PopCount(na);
+                countB += BitOperations.PopCount(nb);
+                byte both = (byte)(na & nb);
+                byte differ = (byte)(both & (a[signOffset + i] ^ b[signOffset + i]));
+                disagree += BitOperations.PopCount(differ);
+                agree += BitOperations.PopCount((uint)(both & ~differ & 0xFF));
+            }
+
+            double tailDot = sa * sb * (agree - disagree);
+            if (Metric == DistanceMetric.Dot)
+            {
+                return 1.0 - (headDot + tailDot);
+            }
+
+            return headL2 + Math.Max((sa * sa * countA) + (sb * sb * countB) - (2.0 * tailDot), 0.0);
         }
 
         protected override void DecodeForPair(ReadOnlySpan<byte> stored, Span<float> destination)

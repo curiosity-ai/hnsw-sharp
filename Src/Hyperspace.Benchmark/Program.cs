@@ -200,12 +200,17 @@ static class Micro
         }
 
         Console.WriteLine($"dim={dim}: ns per Distance call over {count} stored vectors (cache-resident), and the decode-then-metric reference");
-        Console.WriteLine("| mode | stored bytes | fast path ns | decode + metric ns | speed-up |");
+        Console.WriteLine("| mode | stored bytes | query-to-vector ns | decode + metric ns | vector-to-vector ns (graph construction) |");
         Console.WriteLine("|---|---:|---:|---:|---:|");
-        foreach (var mode in new[] { QuantizationMode.Float32, QuantizationMode.ScalarInt8, QuantizationMode.ScalarInt4, QuantizationMode.Turbo, QuantizationMode.Ternary, QuantizationMode.Binary })
+        foreach (var mode in new[] { QuantizationMode.Float32, QuantizationMode.ScalarInt8, QuantizationMode.ScalarInt4, QuantizationMode.Turbo, QuantizationMode.Ternary, QuantizationMode.Binary, QuantizationMode.ProductQuantization, QuantizationMode.OPQ })
         {
             var o = new HyperspaceOptions { Dimension = dim, Metric = DistanceMetric.Cosine, Quantization = mode, NormalizeVectors = false, ValidateVectors = false };
             var codec = VectorCodec.Create(o);
+            if (codec is ProductQuantizationCodec pqCodec)
+            {
+                pqCodec.Quantizer.Train(vectors, 4);
+            }
+
             var stored = vectors.Select(v => codec.Encode(v)).ToArray();
             var prepared = codec.Prepare(query);
             var decoded = new float[dim];
@@ -219,7 +224,9 @@ static class Micro
             }
             double fast = Time(s => codec.Distance(s, prepared));
             double reference = Time(s => { codec.Decode(s, decoded); return Metrics.Distance(DistanceMetric.Cosine, (ReadOnlySpan<float>)decoded, query); });
-            Console.WriteLine($"| {mode} | {codec.EncodedLength} | {fast:F0} | {reference:F0} | {reference / fast:F1}x |");
+            int partner = 0;
+            double pair = Time(s => codec.PairDistance(s, stored[partner++ & (stored.Length - 1)]));
+            Console.WriteLine($"| {mode} | {codec.EncodedLength} | {fast:F0} | {reference:F0} | {pair:F0} |");
             GC.KeepAlive(sink);
         }
     }

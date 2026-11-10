@@ -46,7 +46,7 @@ namespace Hyperspace.Tests
             Assert.AreEqual(768 * 4, Bytes(QuantizationMode.Float32));
             Assert.AreEqual(768 + 8, Bytes(QuantizationMode.ScalarInt8));
             Assert.AreEqual((768 / 8) + 4, Bytes(QuantizationMode.Binary));
-            Assert.AreEqual(4 + (768 / 16 * 4) + (768 / 16 * 8), Bytes(QuantizationMode.ScalarInt4));
+            Assert.AreEqual(4 + (768 / 16 * 4) + (768 / 16 * 8) + 4, Bytes(QuantizationMode.ScalarInt4));   // + the stored tail norm
             Assert.AreEqual(8 + (768 / 2), Bytes(QuantizationMode.Turbo));
             Assert.AreEqual((2 * 96) + 8, Bytes(QuantizationMode.Ternary));
             Assert.AreEqual(768 / 16, Bytes(QuantizationMode.ProductQuantization));
