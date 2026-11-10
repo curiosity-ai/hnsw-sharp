@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <Platforms>AnyCPU</Platforms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Hyperspace</RootNamespace>
+    <AssemblyName>Hyperspace</AssemblyName>
+    <Company>Curiosity GmbH</Company>
+    <PackageId>Hyperspace</PackageId>
+    <Authors>Curiosity GmbH</Authors>
+    <Product>Hyperspace</Product>
+    <Description>Managed embedding database engine for .NET: HNSW with Euclidean, cosine, Poincare, Lorentz and 8 more metrics, scalar/binary/ternary/TurboQuant/product quantization, BM25 hybrid search, metadata and geometric filters, property graph (CSR) with BFS reachability, fuzzy logic queries, Riemannian math and flat binary serialization. A port of the algorithms in HyperspaceDB, built on the conventions of the HNSW package.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>(c) Copyright 2026 Curiosity GmbH</Copyright>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageProjectUrl>https://github.com/curiosity-ai/hnsw-sharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/curiosity-ai/hnsw-sharp</RepositoryUrl>
+    <PackageTags>embeddings, vector-database, HNSW, ANN, hyperbolic, poincare, lorentz, quantization, BM25, hybrid-search</PackageTags>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="Hyperspace.Tests" />
+    <InternalsVisibleTo Include="Hyperspace.Benchmark" />
+  </ItemGroup>
+</Project>

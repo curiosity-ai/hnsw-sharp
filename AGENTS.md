@@ -32,3 +32,12 @@ HNSW.Net is a .NET library that implements the Hierarchical Navigable Small Worl
 ## Helpful Notes for Contributors
 - The library is source-distributed; updates should be made directly in `Src/HNSW.Net`.
 - Keep public API changes documented in README snippets and ensure tests in `Src/HNSW.Net.Tests` remain green when possible.
+
+## Hyperspace package (`Src/Hyperspace`)
+A second library in this repository: a managed embedding database engine ported from HyperspaceDB (Rust). Tests are in `Src/Hyperspace.Tests` (`dotnet test Src/Hyperspace.Tests`).
+- **Entry point**: `HyperspaceIndex` (`Index/`), configured with `HyperspaceOptions`; queries take `SearchOptions` and return `SearchResult[]`.
+- **Layout**: `Metrics/` (12 distance metrics), `Quantization/` (one `VectorCodec` per `QuantizationMode`, plus `ProductQuantizer`), `Filters/` (`FilterExpr`, `IdSet`, metadata index, regions), `Text/` (BM25, tokenizer, lexical index), `Graph/` (property graph, CSR), `Fuzzy/`, `Clustering/` (k-means, `MetaRouter`), `Math/` (Riemannian toolkit, FWHT rotation, keyed projection), `IO/` (little-endian buffer helpers).
+- **Persistence**: `SerializeGraph` / `DeserializeGraph` (graph only, caller keeps the items, mirrors the `HNSW2` flat format) and `Save` / `Load` (full snapshot). Both validate on read and throw `InvalidDataException`; the byte layout is documented in `HyperspaceIndex.Serialization.cs`. Any change to it must keep older files readable or bump the magic / parameters version.
+- **Concurrency**: one reader-writer lock; `Search*` take the read lock, `Add*`/`Update*`/`Delete`/`OptimizeAsSng` the write lock. Graph nodes are only mutated under the write lock.
+- **Codec invariants**: `Encode` output has a fixed `EncodedLength`; `Distance` compares a stored vector to a `PreparedQuery` (prepare once per search); `PairDistance` must be on the same scale as `Distance` because graph construction compares them.
+- Quantized recall is checked against brute force in `IndexTests.cs`; the aggressive codecs are only expected to be good with `KeepOriginalVectors` re-ranking.

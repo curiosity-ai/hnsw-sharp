@@ -1,0 +1,286 @@
+// <copyright file="Int4Codec.cs" company="Curiosity GmbH">
+// Copyright (c) Curiosity GmbH. All rights reserved.
+// Licensed under the MIT License.
+// </copyright>
+
+namespace Hyperspace
+{
+    using System;
+    using System.Buffers.Binary;
+
+    /// <summary>
+    /// 4-bit scalar quantization in blocks of 16. Layout (little-endian):
+    /// <c>float[head] | uint blockCount | float[blockCount] scales | byte[blockCount * 8] nibbles | float tailNormSq</c>, the last being the squared norm of
+    /// the dequantized tail, kept so a squared-L2 distance needs one table pass instead of two.
+    /// </summary>
+    /// <remarks>
+    /// The first <c>head</c> coordinates (the Lorentz part of a hybrid vector) stay in float32. Each block of 16 tail coordinates
+    /// gets <c>scale = max|x| / 7</c> and nibbles <c>round(x / scale) + 8</c>, two per byte, high nibble first.
+    /// </remarks>
+    internal sealed class Int4Codec : VectorCodec
+    {
+        private const int BlockSize = 16;
+        private static readonly float[] Levels = Enumerable16();
+
+        /// <summary>For a packed byte, the sum of the squares of its two levels.</summary>
+        private static readonly float[] PairSquares = BuildPairSquares();
+
+        private readonly int _head;
+
+        private static float[] Enumerable16()
+        {
+            var l = new float[16];
+            for (int i = 0; i < 16; i++)
+            {
+                l[i] = i - 8;
+            }
+
+            return l;
+        }
+
+        private static float[] BuildPairSquares()
+        {
+            var t = new float[256];
+            for (int b = 0; b < 256; b++)
+            {
+                t[b] = ((b >> 4) - 8) * ((b >> 4) - 8) + (((b & 15) - 8) * ((b & 15) - 8));
+            }
+
+            return t;
+        }
+
+        public Int4Codec(int dimension, DistanceMetric metric, int headDimensions)
+            : base(dimension, metric)
+        {
+            _head = Math.Min(headDimensions, dimension);
+        }
+
+        private int TailDim => Dimension - _head;
+
+        private int Blocks => (TailDim + BlockSize - 1) / BlockSize;
+
+        public override int EncodedLength => (_head * 4) + 4 + (Blocks * 4) + (Blocks * (BlockSize / 2)) + 4;
+
+        public override byte[] Encode(ReadOnlySpan<float> vector)
+        {
+            var bytes = new byte[EncodedLength];
+            int pos = 0;
+            for (int i = 0; i < _head; i++, pos += 4)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pos, 4), vector[i]);
+            }
+
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(pos, 4), (uint)Blocks);
+            pos += 4;
+            int scalesOffset = pos;
+            int packedOffset = scalesOffset + (Blocks * 4);
+
+            Span<int> q = stackalloc int[BlockSize];
+            double normSq = 0;
+            for (int b = 0; b < Blocks; b++)
+            {
+                int start = b * BlockSize;
+                int end = Math.Min(start + BlockSize, TailDim);
+                double max = 0;
+                for (int i = start; i < end; i++)
+                {
+                    max = Math.Max(max, Math.Abs(vector[_head + i]));
+                }
+
+                float scale = (float)(max > 1e-9 ? max / 7.0 : 1.0);
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(scalesOffset + (b * 4), 4), scale);
+
+                double inv = 1.0 / scale;
+                for (int i = 0; i < BlockSize; i++)
+                {
+                    int idx = start + i;
+                    q[i] = idx < TailDim ? (int)Math.Clamp(Math.Round(vector[_head + idx] * inv, MidpointRounding.AwayFromZero), -7.0, 7.0) : 0;
+                }
+
+                int levelsSq = 0;
+                for (int i = 0; i < BlockSize; i++)
+                {
+                    levelsSq += q[i] * q[i];
+                }
+
+                normSq += (double)scale * scale * levelsSq;
+
+                for (int pair = 0; pair < BlockSize / 2; pair++)
+                {
+                    int q1 = (q[pair * 2] + 8) & 0x0F;
+                    int q2 = (q[(pair * 2) + 1] + 8) & 0x0F;
+                    bytes[packedOffset + (b * (BlockSize / 2)) + pair] = (byte)((q1 << 4) | q2);
+                }
+            }
+
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(bytes.Length - 4, 4), (float)normSq);
+            return bytes;
+        }
+
+        private void Reconstruct(ReadOnlySpan<byte> stored, Span<double> output)
+        {
+            for (int i = 0; i < _head; i++)
+            {
+                output[i] = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(i * 4, 4));
+            }
+
+            int pos = _head * 4;
+            int blocks = (int)BinaryPrimitives.ReadUInt32LittleEndian(stored.Slice(pos, 4));
+            int scalesOffset = pos + 4;
+            int packedOffset = scalesOffset + (blocks * 4);
+            for (int b = 0; b < blocks; b++)
+            {
+                double scale = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(scalesOffset + (b * 4), 4));
+                int start = b * BlockSize;
+                int end = Math.Min(start + BlockSize, TailDim);
+                for (int i = start; i < end; i++)
+                {
+                    int rel = i - start;
+                    byte packed = stored[packedOffset + (b * (BlockSize / 2)) + (rel / 2)];
+                    int u = (rel & 1) == 1 ? packed & 0x0F : packed >> 4;
+                    output[_head + i] = (u - 8) * scale;
+                }
+            }
+        }
+
+        public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination)
+        {
+            var buf = Scratch(Dimension);
+            Reconstruct(stored, buf.AsSpan(0, Dimension));
+            for (int i = 0; i < destination.Length; i++)
+            {
+                destination[i] = (float)buf[i];
+            }
+        }
+
+        /// <summary>LevelProducts[a * 16 + b] is the product of the levels of nibbles a and b.</summary>
+        private static readonly float[] LevelProducts = BuildLevelProducts();
+
+        private static float[] BuildLevelProducts()
+        {
+            var t = new float[256];
+            for (int a = 0; a < 16; a++)
+            {
+                for (int b = 0; b < 16; b++)
+                {
+                    t[(a * 16) + b] = (a - 8) * (b - 8);
+                }
+            }
+
+            return t;
+        }
+
+        /// <summary>
+        /// Squared L2 (or 1 - dot) between two codes without decoding: <c>|a - b|^2 = |a|^2 + |b|^2 - 2 a.b</c> with the stored tail norms, and
+        /// <c>a.b</c> a sum over blocks of <c>scaleA scaleB sum(levelA levelB)</c>, one product-table lookup per nibble pair.
+        /// </summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            if (Metric is not (DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot))
+            {
+                return base.PairDistance(a, b);
+            }
+
+            double headL2 = 0, headDot = 0;
+            for (int i = 0; i < _head; i++)
+            {
+                double x = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(i * 4, 4));
+                double y = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(i * 4, 4));
+                headL2 += (x - y) * (x - y);
+                headDot += x * y;
+            }
+
+            int pos = _head * 4;
+            int blocks = (int)BinaryPrimitives.ReadUInt32LittleEndian(a.Slice(pos, 4));
+            int scalesOffset = pos + 4;
+            int packedOffset = scalesOffset + (blocks * 4);
+            double tailDot = 0;
+            for (int blk = 0; blk < blocks; blk++)
+            {
+                double sa = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(scalesOffset + (blk * 4), 4));
+                double sb = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(scalesOffset + (blk * 4), 4));
+                int offset = packedOffset + (blk * (BlockSize / 2));
+                float products = 0;
+                for (int j = 0; j < BlockSize / 2; j++)
+                {
+                    byte x = a[offset + j], y = b[offset + j];
+                    products += LevelProducts[((x >> 4) << 4) + (y >> 4)] + LevelProducts[((x & 15) << 4) + (y & 15)];
+                }
+
+                tailDot += sa * sb * products;
+            }
+
+            if (Metric == DistanceMetric.Dot)
+            {
+                return 1.0 - (headDot + tailDot);
+            }
+
+            double normA = BinaryPrimitives.ReadSingleLittleEndian(a.Slice(a.Length - 4, 4));
+            double normB = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(b.Length - 4, 4));
+            return headL2 + Math.Max(normA + normB - (2.0 * tailDot), 0.0);
+        }
+
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
+        {
+            var q = base.Prepare(query, reuse);
+            if (IsFastMetric && TailDim > 0)
+            {
+                var tail = q.Coords32.AsSpan(_head);
+                double sq = 0;
+                foreach (var x in tail)
+                {
+                    sq += (double)x * x;
+                }
+
+                q.TailNormSq = sq;
+                q.Table = QuantSimd.BuildNibblePairTable(tail, Levels, Blocks * (BlockSize / 2), q.Table);
+            }
+
+            return q;
+        }
+
+        private bool IsFastMetric => Metric is DistanceMetric.L2 or DistanceMetric.Cosine or DistanceMetric.Dot;
+
+        public override bool SupportsTruncation => true;
+
+        public override double Distance(ReadOnlySpan<byte> stored, PreparedQuery query, int truncation = 0)
+        {
+            if (truncation > 0 || !IsFastMetric)
+            {
+                var buf = Scratch(Dimension);
+                Reconstruct(stored, buf.AsSpan(0, Dimension));
+                return DistanceFromDecoded(buf.AsSpan(0, Dimension), query, 0, truncation);
+            }
+
+            double headDistSq = 0, headDot = 0;
+            for (int i = 0; i < _head; i++)
+            {
+                double h = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(i * 4, 4));
+                double diff = h - query.Coords[i];
+                headDistSq += diff * diff;
+                headDot += h * query.Coords[i];
+            }
+
+            // Per block: scale * (sum of one table lookup per byte). Padded nibbles hold the level 0, so they add nothing.
+            int pos = _head * 4;
+            int blocks = (int)BinaryPrimitives.ReadUInt32LittleEndian(stored.Slice(pos, 4));
+            int scalesOffset = pos + 4;
+            int packedOffset = scalesOffset + (blocks * 4);
+            var table = query.Table!;
+            double tailDot = 0;
+            for (int b = 0; b < blocks; b++)
+            {
+                double scale = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(scalesOffset + (b * 4), 4));
+                tailDot += scale * QuantSimd.SumTable(stored.Slice(packedOffset + (b * (BlockSize / 2)), BlockSize / 2), table, b * (BlockSize / 2));
+            }
+
+            if (Metric == DistanceMetric.Dot)
+            {
+                return 1.0 - (headDot + tailDot);
+            }
+
+            double codeSq = BinaryPrimitives.ReadSingleLittleEndian(stored.Slice(stored.Length - 4, 4));
+            return headDistSq + Math.Max(codeSq - (2.0 * tailDot) + query.TailNormSq, 0.0);
+        }
+    }
+}

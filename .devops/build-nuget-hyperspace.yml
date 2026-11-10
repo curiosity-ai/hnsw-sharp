@@ -1,0 +1,79 @@
+variables:
+  project:  './Src/Hyperspace/Hyperspace.csproj'
+  testProject: './Src/Hyperspace.Tests/Hyperspace.Tests.csproj'
+  buildConfiguration: 'Release'
+  targetVersion: yy.M.$(build.buildId)
+
+trigger:
+  branches:
+    include:
+    - master
+  paths:
+    include:
+    - Src/Hyperspace/*
+    - Src/Hyperspace.Tests/*
+    - .devops/build-nuget-hyperspace.yml
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- task: NuGetToolInstaller@0
+
+
+- task: PowerShell@2
+  displayName: 'Create CalVer Version'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $dottedDate = (Get-Date).ToString("yy.M")
+      $buildID = $($env:BUILD_BUILDID) 
+      $modBuildID = [int]$buildID % 65536  # ensure fits in int16
+      $newTargetVersion = "$dottedDate.$modBuildID"
+      Write-Host "##vso[task.setvariable variable=targetVersion;]$newTargetVersion"
+      Write-Host "Updated targetVersion to '$newTargetVersion'"
+
+
+- task: UseDotNet@2
+  displayName: 'Use .NET 10.0 SDK'
+  inputs:
+    packageType: sdk
+    version: 10.x
+    includePreviewVersions: false
+    installationPath: $(Agent.ToolsDirectory)\dotnet
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'restore'
+    projects: '$(project)'
+  displayName: 'restore nuget'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'build'
+    projects: '$(project)'
+    arguments: '-c $(buildConfiguration) /p:Version=$(targetVersion) /p:LangVersion=latest'
+
+- task: DotNetCoreCLI@2
+  displayName: 'test'
+  inputs:
+    command: 'test'
+    projects: '$(testProject)'
+    arguments: '-c $(buildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'pack'
+    packagesToPack: '$(project)'
+    versioningScheme: 'off'
+    configuration: '$(buildConfiguration)'
+    buildProperties: 'Version="$(targetVersion)";LangVersion="latest"'
+    nobuild: true
+
+- task: NuGetCommand@2
+  inputs:
+    command: 'push'
+    packagesToPush: '**/*.nupkg'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'nuget-curiosity-org'
+  displayName: 'push nuget'

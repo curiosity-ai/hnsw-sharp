@@ -1,0 +1,642 @@
+// <copyright file="ProductQuantizer.cs" company="Curiosity GmbH">
+// Copyright (c) Curiosity GmbH. All rights reserved.
+// Licensed under the MIT License.
+// </copyright>
+
+namespace Hyperspace
+{
+    using System;
+    using System.Buffers.Binary;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Threading.Tasks;
+
+    /// <summary>
+    /// Product quantization (and OPQ-by-rotation): a vector is cut into sub-vectors, each replaced by the index of its nearest of
+    /// 256 centroids, so a D-dimensional vector costs one byte per sub-vector. Distances use asymmetric lookup tables.
+    /// </summary>
+    public sealed class ProductQuantizer
+    {
+        /// <summary>The magic of a serialized codebook.</summary>
+        public static readonly byte[] Magic = { (byte)'P', (byte)'Q', (byte)'C', (byte)'B' };
+
+        private readonly float[] _centroids;
+        private float[]? _symmetric;
+        private int _version;
+
+        /// <summary>Initializes a new instance of the <see cref="ProductQuantizer"/> class with deterministic pseudo-Gaussian codebooks.</summary>
+        /// <param name="dimension">The vector dimension.</param>
+        /// <param name="numSubvectors">The number of sub-vectors; the dimension is rounded up to a multiple of it.</param>
+        /// <param name="isOpq">Rotate vectors with the Walsh-Hadamard transform before quantizing, which balances the energy between sub-vectors.</param>
+        public ProductQuantizer(int dimension, int numSubvectors, bool isOpq)
+        {
+            if (dimension <= 0 || numSubvectors <= 0)
+            {
+                throw new ArgumentException("Dimension and number of sub-vectors must be positive");
+            }
+
+            Dimension = dimension;
+            NumSubvectors = numSubvectors;
+            SubvectorDimension = (dimension + numSubvectors - 1) / numSubvectors;
+            IsOpq = isOpq;
+            _centroids = new float[checked(numSubvectors * 256 * SubvectorDimension)];
+
+            float scale = 1.0f / Math.Max(MathF.Sqrt(dimension), 1e-4f);
+            for (int sub = 0; sub < numSubvectors; sub++)
+            {
+                for (int k = 0; k < 256; k++)
+                {
+                    int offset = ((sub * 256) + k) * SubvectorDimension;
+                    for (int d = 0; d < SubvectorDimension; d++)
+                    {
+                        ulong seed = ((((ulong)sub * 256) + (ulong)k) * (ulong)SubvectorDimension) + (ulong)d + 1;
+                        ulong x = unchecked(seed * 0x517cc1b727220a95UL);
+                        x ^= x >> 32;
+                        float u1 = (((x & 0xffff) + 1.0f) / 65537.0f);
+                        float u2 = ((((x >> 16) & 0xffff) + 1.0f) / 65537.0f);
+                        _centroids[offset + d] = MathF.Sqrt(-2.0f * MathF.Log(u1)) * MathF.Cos(2.0f * MathF.PI * u2) * scale;
+                    }
+                }
+            }
+        }
+
+        private ProductQuantizer(int dimension, int numSubvectors, bool isOpq, float[] centroids)
+        {
+            Dimension = dimension;
+            NumSubvectors = numSubvectors;
+            SubvectorDimension = (dimension + numSubvectors - 1) / numSubvectors;
+            IsOpq = isOpq;
+            _centroids = centroids;
+        }
+
+        /// <summary>Gets the vector dimension.</summary>
+        public int Dimension { get; }
+
+        /// <summary>Gets the number of sub-vectors (and the length in bytes of a code).</summary>
+        public int NumSubvectors { get; }
+
+        /// <summary>Gets the dimension of one sub-vector.</summary>
+        public int SubvectorDimension { get; }
+
+        /// <summary>Gets a value indicating whether vectors are rotated before quantization.</summary>
+        public bool IsOpq { get; }
+
+        /// <summary>
+/// The default number of sub-vectors for a dimension, targeting sub-vectors of 4 dimensions (16x compression). Coarser sub-vectors compress more but recall collapses
+/// (128 dimensions, 20,000 vectors: 8 sub-vectors 0.10, 16 sub-vectors 0.32, 32 sub-vectors 0.57, 64 sub-vectors 0.85, each at ef 256).
+/// </summary>
+        public static int DefaultSubvectorCount(int dimension)
+        {
+            if (dimension <= 0)
+            {
+                return 1;
+            }
+
+            if (dimension % 4 == 0)
+            {
+                return dimension / 4;
+            }
+
+            return dimension % 2 == 0 ? dimension / 2 : dimension;
+        }
+
+        private Span<float> Centroid(int sub, int k) => _centroids.AsSpan((((sub * 256) + k) * SubvectorDimension), SubvectorDimension);
+
+        /// <summary>Trains the codebooks with Lloyd's k-means on each sub-space, seeded with k-means++.</summary>
+        public void Train(IReadOnlyList<float[]> samples, int iterations = 10)
+        {
+            System.Threading.Interlocked.Increment(ref _version);
+            _symmetric = null;
+            if (samples.Count == 0)
+            {
+                return;
+            }
+
+            var data = new float[samples.Count][];
+            for (int i = 0; i < data.Length; i++)
+            {
+                data[i] = samples[i].AsSpan(0, Math.Min(samples[i].Length, Dimension)).ToArray();
+                if (data[i].Length < Dimension)
+                {
+                    Array.Resize(ref data[i], Dimension);
+                }
+
+                if (IsOpq)
+                {
+                    TurboRotation.Rotate(data[i]);
+                }
+            }
+
+            int n = data.Length;
+            int subDim = SubvectorDimension;
+
+            Parallel.For(0, NumSubvectors, sub =>
+            {
+                int subOffset = sub * subDim;
+                SeedPlusPlus(data, sub, subOffset, subDim, seed: 0x5EED + sub);
+
+                var assignments = new byte[n];
+                var counts = new int[256];
+                var sums = new float[256 * subDim];
+                for (int iter = 0; iter < iterations; iter++)
+                {
+                    for (int s = 0; s < n; s++)
+                    {
+                        var v = data[s];
+                        byte best = 0;
+                        float bestDist = float.MaxValue;
+                        for (int k = 0; k < 256; k++)
+                        {
+                            var c = Centroid(sub, k);
+                            float dist = 0;
+                            for (int d = 0; d < subDim; d++)
+                            {
+                                int idx = subOffset + d;
+                                float diff = (idx < v.Length ? v[idx] : 0f) - c[d];
+                                dist += diff * diff;
+                            }
+
+                            if (dist < bestDist)
+                            {
+                                bestDist = dist;
+                                best = (byte)k;
+                            }
+                        }
+
+                        assignments[s] = best;
+                    }
+
+                    Array.Clear(counts);
+                    Array.Clear(sums);
+                    for (int s = 0; s < n; s++)
+                    {
+                        int k = assignments[s];
+                        counts[k]++;
+                        var v = data[s];
+                        for (int d = 0; d < subDim; d++)
+                        {
+                            int idx = subOffset + d;
+                            sums[(k * subDim) + d] += idx < v.Length ? v[idx] : 0f;
+                        }
+                    }
+
+                    for (int k = 0; k < 256; k++)
+                    {
+                        if (counts[k] > 0)
+                        {
+                            var c = Centroid(sub, k);
+                            float inv = 1.0f / counts[k];
+                            for (int d = 0; d < subDim; d++)
+                            {
+                                c[d] = sums[(k * subDim) + d] * inv;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        /// <summary>
+        /// k-means++ seeding of the 256 centroids of one sub-space: each new centroid is a sample drawn with probability proportional to its squared
+        /// distance to the nearest centroid chosen so far. It reaches a clearly lower quantization error than seeding from evenly spaced samples,
+        /// at the cost of one extra Lloyd-iteration's worth of distance computations. Deterministic for a given sample set.
+        /// </summary>
+        private void SeedPlusPlus(float[][] data, int sub, int subOffset, int subDim, int seed)
+        {
+            int n = data.Length;
+            var rng = new Random(seed);
+            var nearest = new double[n];
+
+            void Set(int k, float[] sample)
+            {
+                var c = Centroid(sub, k);
+                for (int d = 0; d < subDim; d++)
+                {
+                    int idx = subOffset + d;
+                    c[d] = idx < sample.Length ? sample[idx] : 0f;
+                }
+            }
+
+            double DistTo(float[] sample, int k)
+            {
+                var c = Centroid(sub, k);
+                double dist = 0;
+                for (int d = 0; d < subDim; d++)
+                {
+                    int idx = subOffset + d;
+                    double diff = (idx < sample.Length ? sample[idx] : 0f) - c[d];
+                    dist += diff * diff;
+                }
+
+                return dist;
+            }
+
+            Set(0, data[rng.Next(n)]);
+            for (int i = 0; i < n; i++)
+            {
+                nearest[i] = DistTo(data[i], 0);
+            }
+
+            for (int k = 1; k < 256; k++)
+            {
+                double total = 0;
+                foreach (double dist in nearest)
+                {
+                    total += dist;
+                }
+
+                // With fewer distinct samples than centroids every distance reaches zero: fall back to a uniform pick.
+                int pick = rng.Next(n);
+                if (total > 0)
+                {
+                    double target = rng.NextDouble() * total, acc = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        acc += nearest[i];
+                        if (acc >= target && nearest[i] > 0)
+                        {
+                            pick = i;
+                            break;
+                        }
+                    }
+                }
+
+                Set(k, data[pick]);
+                for (int i = 0; i < n; i++)
+                {
+                    double dist = DistTo(data[i], k);
+                    if (dist < nearest[i])
+                    {
+                        nearest[i] = dist;
+                    }
+                }
+            }
+        }
+
+        /// <summary>Encodes a vector to <see cref="NumSubvectors"/> bytes.</summary>
+        public byte[] Encode(ReadOnlySpan<float> vector)
+        {
+            var work = Prepare(vector);
+            var codes = new byte[NumSubvectors];
+            int subDim = SubvectorDimension;
+            for (int sub = 0; sub < NumSubvectors; sub++)
+            {
+                int subOffset = sub * subDim;
+                byte best = 0;
+                float bestDist = float.MaxValue;
+                for (int k = 0; k < 256; k++)
+                {
+                    var c = Centroid(sub, k);
+                    float dist = 0;
+                    for (int d = 0; d < subDim; d++)
+                    {
+                        int idx = subOffset + d;
+                        float diff = (idx < work.Length ? work[idx] : 0f) - c[d];
+                        dist += diff * diff;
+                    }
+
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        best = (byte)k;
+                    }
+                }
+
+                codes[sub] = best;
+            }
+
+            return codes;
+        }
+
+        /// <summary>Reconstructs a vector from its codes.</summary>
+        public float[] Decode(ReadOnlySpan<byte> codes)
+        {
+            var output = new float[Dimension];
+            DecodeInto(codes, output, unrotate: true);
+            return output;
+        }
+
+        /// <summary>
+        /// Reconstructs a vector into <paramref name="output"/>. With <paramref name="unrotate"/> off an OPQ vector stays in the rotated
+        /// domain, which is enough (and cheaper) to compare two codes by L2 distance.
+        /// </summary>
+        public void DecodeInto(ReadOnlySpan<byte> codes, Span<float> output, bool unrotate)
+        {
+            output.Slice(0, Dimension).Clear();
+            int subDim = SubvectorDimension;
+            for (int sub = 0; sub < codes.Length && sub < NumSubvectors; sub++)
+            {
+                var c = Centroid(sub, codes[sub]);
+                for (int d = 0; d < subDim; d++)
+                {
+                    int idx = (sub * subDim) + d;
+                    if (idx < Dimension)
+                    {
+                        output[idx] = c[d];
+                    }
+                }
+            }
+
+            if (IsOpq && unrotate)
+            {
+                TurboRotation.Unrotate(output.Slice(0, Dimension));
+            }
+        }
+
+        /// <summary>The largest symmetric table that is built (bytes); a quantizer with more sub-vectors falls back to decoding.</summary>
+        private const long MaxSymmetricTableBytes = 64L * 1024 * 1024;
+
+        /// <summary>
+        /// The table of squared distances between every pair of centroids of every sub-quantizer, <c>NumSubvectors * 65536</c> floats:
+        /// the distance between two encoded vectors is then one lookup per sub-vector (symmetric distance computation). Built on first use and
+        /// rebuilt after training; <c>null</c> if it would exceed <see cref="MaxSymmetricTableBytes"/>. Padding dimensions past the end of the vector are ignored,
+        /// as when decoding.
+        /// </summary>
+        internal float[]? SymmetricTable
+        {
+            get
+            {
+                var table = _symmetric;
+                if (table is not null)
+                {
+                    return table;
+                }
+
+                if ((long)NumSubvectors * 65536 * sizeof(float) > MaxSymmetricTableBytes)
+                {
+                    return null;
+                }
+
+                table = new float[NumSubvectors * 65536];
+                int subDim = SubvectorDimension;
+                Parallel.For(0, NumSubvectors, sub =>
+                {
+                    int used = Math.Min(subDim, Dimension - (sub * subDim));
+                    int baseIndex = sub * 65536;
+                    for (int a = 0; a < 256; a++)
+                    {
+                        var ca = Centroid(sub, a);
+                        for (int b = a; b < 256; b++)
+                        {
+                            var cb = Centroid(sub, b);
+                            float dist = 0;
+                            for (int d = 0; d < used; d++)
+                            {
+                                float diff = ca[d] - cb[d];
+                                dist += diff * diff;
+                            }
+
+                            table[baseIndex + (a << 8) + b] = dist;
+                            table[baseIndex + (b << 8) + a] = dist;
+                        }
+                    }
+                });
+
+                _symmetric = table;
+                return table;
+            }
+        }
+
+        /// <summary>Whether the symmetric table is currently held in memory.</summary>
+        internal bool HasSymmetricTable => _symmetric is not null;
+
+        /// <summary>
+        /// Drops the symmetric table (<c>NumSubvectors * 256 KiB</c>), which only inserting needs. The next insert builds it again, which takes a few
+        /// milliseconds per sub-vector.
+        /// </summary>
+        internal void ReleaseSymmetricTable() => _symmetric = null;
+
+        /// <summary>Precomputes the table of squared distances from the query to every centroid.</summary>
+        public LookupTable ComputeLookupTable(ReadOnlySpan<float> query) => ComputeLookupTable(query, null);
+
+        /// <summary>Like <see cref="ComputeLookupTable(ReadOnlySpan{float})"/>, overwriting a table from a previous query instead of allocating one.</summary>
+        internal LookupTable ComputeLookupTable(ReadOnlySpan<float> query, LookupTable? reuse)
+        {
+            var work = Prepare(query);
+            var table = reuse is not null && reuse.Table.Length == NumSubvectors * 256 ? reuse.Table : new float[NumSubvectors * 256];
+            int subDim = SubvectorDimension;
+            for (int sub = 0; sub < NumSubvectors; sub++)
+            {
+                int subOffset = sub * subDim;
+                for (int k = 0; k < 256; k++)
+                {
+                    var c = Centroid(sub, k);
+                    float dist = 0;
+                    for (int d = 0; d < subDim; d++)
+                    {
+                        int idx = subOffset + d;
+                        float diff = (idx < work.Length ? work[idx] : 0f) - c[d];
+                        dist += diff * diff;
+                    }
+
+                    table[(sub * 256) + k] = dist;
+                }
+            }
+
+            return ReferenceEquals(reuse?.Table, table) ? reuse! : new LookupTable(NumSubvectors, table);
+        }
+
+        [ThreadStatic]
+        private static float[]? workScratch;
+
+        /// <summary>The vector, rotated for OPQ, in a reusable per-thread buffer (valid until the next call on this thread).</summary>
+        private Span<float> Prepare(ReadOnlySpan<float> vector)
+        {
+            var buffer = workScratch;
+            if (buffer is null || buffer.Length < Dimension)
+            {
+                buffer = workScratch = new float[Math.Max(Dimension, 64)];
+            }
+
+            var work = buffer.AsSpan(0, Dimension);
+            work.Clear();
+            vector.Slice(0, Math.Min(vector.Length, Dimension)).CopyTo(work);
+            if (IsOpq)
+            {
+                TurboRotation.Rotate(work);
+            }
+
+            return work;
+        }
+
+        // ------------------------------------------------------------------ serialization ("PQCB")
+
+        /// <summary>
+        /// Writes the codebooks as <c>"PQCB" | u32 dimension | u32 subvectors | u32 isOpq | u32 centroidCount | f32[] centroids</c>,
+        /// little-endian (the same file HyperspaceDB reads and writes).
+        /// </summary>
+        public void Save(Stream stream)
+        {
+            Span<byte> header = stackalloc byte[20];
+            Magic.CopyTo(header);
+            BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(4), (uint)Dimension);
+            BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(8), (uint)NumSubvectors);
+            BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(12), IsOpq ? 1u : 0u);
+            BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(16), (uint)_centroids.Length);
+            stream.Write(header);
+
+            var buffer = new byte[4096];
+            int pos = 0;
+            while (pos < _centroids.Length)
+            {
+                int count = Math.Min(_centroids.Length - pos, buffer.Length / 4);
+                for (int i = 0; i < count; i++)
+                {
+                    BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan(i * 4, 4), _centroids[pos + i]);
+                }
+
+                stream.Write(buffer, 0, count * 4);
+                pos += count;
+            }
+        }
+
+        /// <summary>Saves the codebooks to a file.</summary>
+        public void Save(string path)
+        {
+            using var fs = File.Create(path);
+            Save(fs);
+        }
+
+        /// <summary>Reads codebooks written by <see cref="Save(Stream)"/>.</summary>
+        public static ProductQuantizer Load(Stream stream)
+        {
+            Span<byte> header = stackalloc byte[20];
+            stream.ReadExactly(header);
+            if (!header.Slice(0, 4).SequenceEqual(Magic))
+            {
+                throw new InvalidDataException("Invalid PQ codebook magic");
+            }
+
+            int dimension = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(header.Slice(4)));
+            int subvectors = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(header.Slice(8)));
+            bool opq = BinaryPrimitives.ReadUInt32LittleEndian(header.Slice(12)) != 0;
+            int count = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(header.Slice(16)));
+            if (dimension <= 0 || subvectors <= 0)
+            {
+                throw new InvalidDataException("Invalid PQ codebook header");
+            }
+
+            int expected = checked(subvectors * 256 * ((dimension + subvectors - 1) / subvectors));
+            if (count != expected)
+            {
+                throw new InvalidDataException($"PQ codebook declares {count} centroid values but its shape needs {expected}");
+            }
+
+            var centroids = new float[count];
+            var buffer = new byte[4096];
+            int pos = 0;
+            while (pos < count)
+            {
+                int n = Math.Min(count - pos, buffer.Length / 4);
+                stream.ReadExactly(buffer, 0, n * 4);
+                for (int i = 0; i < n; i++)
+                {
+                    centroids[pos + i] = BinaryPrimitives.ReadSingleLittleEndian(buffer.AsSpan(i * 4, 4));
+                }
+
+                pos += n;
+            }
+
+            return new ProductQuantizer(dimension, subvectors, opq, centroids);
+        }
+
+        /// <summary>Loads codebooks from a file.</summary>
+        public static ProductQuantizer Load(string path)
+        {
+            using var fs = File.OpenRead(path);
+            return Load(fs);
+        }
+
+        /// <summary>A query-to-centroid table giving each distance in <see cref="NumSubvectors"/> additions.</summary>
+        public sealed class LookupTable
+        {
+            private readonly float[] _table;
+
+            internal LookupTable(int numSubvectors, float[] table)
+            {
+                NumSubvectors = numSubvectors;
+                _table = table;
+            }
+
+            internal float[] Table => _table;
+
+            /// <summary>Gets the number of sub-vectors.</summary>
+            public int NumSubvectors { get; }
+
+            /// <summary>The squared distance from the query to the vector whose codes are given.</summary>
+            public float Distance(ReadOnlySpan<byte> codes)
+            {
+                int m = Math.Min(NumSubvectors, codes.Length);
+                float a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+                int i = 0;
+                for (; i + 4 <= m; i += 4)
+                {
+                    a0 += _table[(i * 256) + codes[i]];
+                    a1 += _table[((i + 1) * 256) + codes[i + 1]];
+                    a2 += _table[((i + 2) * 256) + codes[i + 2]];
+                    a3 += _table[((i + 3) * 256) + codes[i + 3]];
+                }
+
+                float sum = (a0 + a1) + (a2 + a3);
+                for (; i < m; i++)
+                {
+                    sum += _table[(i * 256) + codes[i]];
+                }
+
+                return sum;
+            }
+        }
+    }
+
+    /// <summary>Product quantization storage; distances are asymmetric squared L2 whatever the index metric.</summary>
+    internal sealed class ProductQuantizationCodec : VectorCodec
+    {
+        private readonly ProductQuantizer _pq;
+
+        public ProductQuantizationCodec(int dimension, DistanceMetric metric, ProductQuantizer pq)
+            : base(dimension, metric)
+        {
+            _pq = pq;
+        }
+
+        public ProductQuantizer Quantizer => _pq;
+
+        public override DistanceMetric PairMetric => DistanceMetric.L2;
+
+        /// <summary>One symmetric-table lookup per sub-vector instead of decoding both vectors.</summary>
+        public override double PairDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            var table = _pq.SymmetricTable;
+            if (table is null)
+            {
+                return base.PairDistance(a, b);
+            }
+
+            int m = Math.Min(Math.Min(a.Length, b.Length), _pq.NumSubvectors);
+            float sum = 0;
+            for (int i = 0; i < m; i++)
+            {
+                sum += table[(i << 16) + (a[i] << 8) + b[i]];
+            }
+
+            return sum;
+        }
+
+        protected override void DecodeForPair(ReadOnlySpan<byte> stored, Span<float> destination) => _pq.DecodeInto(stored, destination, unrotate: false);
+
+        public override int EncodedLength => _pq.NumSubvectors;
+
+        public override byte[] Encode(ReadOnlySpan<float> vector) => _pq.Encode(vector);
+
+        public override void Decode(ReadOnlySpan<byte> stored, Span<float> destination) => _pq.DecodeInto(stored, destination, unrotate: true);
+
+        public override PreparedQuery Prepare(ReadOnlySpan<float> query, PreparedQuery? reuse = null)
+        {
+            var q = base.Prepare(query, reuse);
+            q.Lookup = _pq.ComputeLookupTable(query, q.Lookup);
+            return q;
+        }
+
+        public override double Distance(ReadOnlySpan<byte> stored, PreparedQuery query, int truncation = 0) => query.Lookup!.Distance(stored);
+    }
+}
